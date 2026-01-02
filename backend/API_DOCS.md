@@ -251,3 +251,50 @@ None required (Public).
 - **404 Not Found**: Academy slug not found.
 - **401 Unauthorized**: Invalid username or password.
 
+
+---
+
+## POST /api/exams/create
+
+Create and schedule a new exam for an academy.
+
+### Authentication
+Requires Bearer token in Authorization header (Teacher/Academy Owner).
+
+### Request Body
+```json
+{
+  "academyId": "uuid-referencing-academy",
+  "title": "Monthly Abacus Exam",
+  "difficulty": "medium", // easy | medium | hard
+  "totalQuestions": 10,
+  "durationMinutes": 30,
+  "startTime": "2026-01-10T10:00:00Z"
+}
+```
+
+### Success Response (201)
+```json
+{
+  "message": "Exam created successfully",
+  "exam": {
+    "id": "uuid",
+    "title": "Monthly Abacus Exam",
+    "difficulty": "medium",
+    "totalQuestions": 10,
+    "durationMinutes": 30,
+    "startTime": "2026-01-10T10:00:00.000Z",
+    "endTime": "2026-01-10T10:30:00.000Z",
+    "createdAt": "2026-01-03T00:00:00.000Z"
+  }
+}
+```
+
+### Error Responses
+- **400 Validation Error**: Missing fields, invalid difficulty, or invalid numeric values.
+- **403 Forbidden**: Teacher does not own the academy.
+
+### Notes
+- endTime is automatically calculated as startTime + durationMinutes.
+- No validation of question availability at this stage.
+
