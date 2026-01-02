@@ -61,3 +61,25 @@ Clerk "Session Tokens" are extremely short-lived (60 seconds). To test endpoints
 | `POST` | `/api/students/login` | Student login (returns JWT) | ❌ No |
 
 For detailed API documentation, see [backend/API_DOCS.md](backend/API_DOCS.md).
+
+---
+
+## 📅 Development Status
+
+- ✅ **Phase 1: Foundation**
+  - Project Setup (Frontend + Backend)
+  - Database Schema (Academies)
+  - Teacher Auth (Clerk)
+  - Academy Management
+
+- ✅ **Phase 2: Student Authentication**
+  - Database Schema (Students)
+  - Student Creation (Scoped to Academy)
+  - Student Login (JWT Issue)
+  - Student Auth Middleware
+  - Cross-Academy Security Checks
+
+- ⏳ **Phase 3: Exams**
+  - Exam Schema
+  - Question Bank
+  - Scheduling logic

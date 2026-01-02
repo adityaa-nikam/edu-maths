@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authenticateTeacher } from '../middlewares';
+import { authenticateTeacher, authenticateStudent } from '../middlewares';
 import { db } from '../db';
 import { students, academies } from '../db/schema';
 import { hashPassword, verifyPassword } from '../utils/password';
@@ -175,6 +175,15 @@ router.post('/login', async (req: Request, res: Response) => {
             message: 'Failed to login',
         });
     }
+});
+
+// Protected Route: Get Student Profile (Test)
+router.get('/me', authenticateStudent, async (req: Request, res: Response) => {
+    return res.status(200).json({
+        message: 'Student authenticated successfully',
+        studentId: req.studentId,
+        academyId: req.academyId,
+    });
 });
 
 export default router;
