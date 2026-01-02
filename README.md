@@ -62,6 +62,7 @@ Clerk "Session Tokens" are extremely short-lived (60 seconds). To test endpoints
 | `POST` | `/api/exams/create` | Create/schedule an exam | ✅ Yes |
 | `GET` | `/api/exams/academy/:slug` | List all exams for an academy | ❌ No |
 | `GET` | `/api/exams/:examId/status` | Check exam status (student) | ✅ Yes (Student JWT) |
+| `GET` | `/api/exams/:examId/questions` | Get exam questions (student) | ✅ Yes (Student JWT) |
 
 For detailed API documentation, see [backend/API_DOCS.md](backend/API_DOCS.md).
 

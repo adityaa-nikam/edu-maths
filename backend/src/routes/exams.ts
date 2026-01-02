@@ -3,6 +3,7 @@ import { authenticateTeacher, authenticateStudent } from '../middlewares';
 import { db } from '../db';
 import { exams, academies } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
+import { fetchRandomQuestions } from '../services/questions';
 
 const router = Router();
 
@@ -203,6 +204,79 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
         return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to check exam status',
+        });
+    }
+});
+
+// Get exam questions (student)
+router.get('/:examId/questions', authenticateStudent, async (req: Request, res: Response) => {
+    try {
+        const { examId } = req.params;
+        const studentAcademyId = req.academyId!;
+
+        // 1. Fetch Exam
+        const exam = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.id, examId))
+            .limit(1);
+
+        if (exam.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Exam not found',
+            });
+        }
+
+        const targetExam = exam[0];
+
+        // 2. Verify Exam Belongs to Student's Academy
+        if (targetExam.academyId !== studentAcademyId) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You are not enrolled in this academy',
+            });
+        }
+
+        // 3. Verify Exam is Active
+        const now = new Date();
+        const startTime = new Date(targetExam.startTime);
+        const endTime = new Date(targetExam.endTime);
+
+        if (now < startTime) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Exam has not started yet',
+            });
+        }
+
+        if (now > endTime) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Exam has already ended',
+            });
+        }
+
+        // 4. Fetch Random Questions
+        const questions = await fetchRandomQuestions(
+            targetExam.difficulty,
+            targetExam.totalQuestions
+        );
+
+        return res.status(200).json({
+            examId: targetExam.id,
+            title: targetExam.title,
+            difficulty: targetExam.difficulty,
+            totalQuestions: targetExam.totalQuestions,
+            durationMinutes: targetExam.durationMinutes,
+            questions,
+        });
+
+    } catch (error) {
+        console.error('Error fetching exam questions:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch exam questions',
         });
     }
 });

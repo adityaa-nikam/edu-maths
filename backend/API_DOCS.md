@@ -377,3 +377,52 @@ Requires Student JWT token in Authorization header.
 - This endpoint enforces academy isolation - students can only check exams from their own academy.
 - No attempt tracking at this stage.
 
+
+---
+
+## GET /api/exams/:examId/questions
+
+Fetch exam questions for a student (only during active exam time).
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Success Response (200)
+```json
+{
+  "examId": "uuid",
+  "title": "Monthly Exam",
+  "difficulty": "easy",
+  "totalQuestions": 10,
+  "durationMinutes": 30,
+  "questions": [
+    {
+      "id": "uuid",
+      "question": "What is 5 + 3?",
+      "options": ["6", "7", "8", "9"]
+    }
+  ]
+}
+```
+
+### Error Responses
+- **400 Bad Request**: Exam has not started yet or has already ended.
+- **401 Unauthorized**: Missing or invalid student JWT.
+- **403 Forbidden**: Exam does not belong to student's academy.
+- **404 Not Found**: Exam not found.
+
+### Notes
+- Questions are randomly selected based on exam difficulty and totalQuestions.
+- **Correct answers are NOT included** in the response for security.
+- Exam must be in active state (between startTime and endTime).
+- Academy isolation is enforced.
+- No attempt tracking at this stage.
+
+### Important: Time Zones
+- All times are stored and compared in UTC.
+- When creating exams, convert local time to UTC before sending startTime.
+- Example: For 2:00 AM IST, send 2026-01-02T20:30:00.000Z (UTC).
+
