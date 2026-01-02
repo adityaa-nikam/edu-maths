@@ -298,3 +298,43 @@ Requires Bearer token in Authorization header (Teacher/Academy Owner).
 - endTime is automatically calculated as startTime + durationMinutes.
 - No validation of question availability at this stage.
 
+
+---
+
+## GET /api/exams/academy/:academySlug
+
+Get all exams for a specific academy (public endpoint).
+
+### Authentication
+None required (Public).
+
+### URL Parameters
+- cademySlug (string) - The unique slug of the academy
+
+### Success Response (200)
+```json
+{
+  "academy": {
+    "name": "My Academy",
+    "slug": "my-academy-slug"
+  },
+  "exams": [
+    {
+      "id": "uuid",
+      "title": "Monthly Abacus Exam",
+      "difficulty": "medium",
+      "startTime": "2026-01-10T10:00:00.000Z",
+      "endTime": "2026-01-10T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+### Error Responses
+- **404 Not Found**: Academy slug not found.
+
+### Notes
+- This is a public endpoint for displaying available exams.
+- Only returns public fields (id, title, difficulty, start/end times).
+- Does not expose internal data like academyId, totalQuestions, or durationMinutes.
+

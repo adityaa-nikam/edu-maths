@@ -94,4 +94,54 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
     }
 });
 
+// Get all exams for an academy (public)
+router.get('/academy/:academySlug', async (req: Request, res: Response) => {
+    try {
+        const { academySlug } = req.params;
+
+        // 1. Find Academy by Slug
+        const academy = await db
+            .select()
+            .from(academies)
+            .where(eq(academies.slug, academySlug))
+            .limit(1);
+
+        if (academy.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Academy not found',
+            });
+        }
+
+        const targetAcademy = academy[0];
+
+        // 2. Fetch All Exams for this Academy
+        const academyExams = await db
+            .select({
+                id: exams.id,
+                title: exams.title,
+                difficulty: exams.difficulty,
+                startTime: exams.startTime,
+                endTime: exams.endTime,
+            })
+            .from(exams)
+            .where(eq(exams.academyId, targetAcademy.id));
+
+        return res.status(200).json({
+            academy: {
+                name: targetAcademy.name,
+                slug: targetAcademy.slug,
+            },
+            exams: academyExams,
+        });
+
+    } catch (error) {
+        console.error('Error fetching exams:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch exams',
+        });
+    }
+});
+
 export default router;

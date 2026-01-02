@@ -60,6 +60,7 @@ Clerk "Session Tokens" are extremely short-lived (60 seconds). To test endpoints
 | `POST` | `/api/students/create` | Create a new student | ✅ Yes |
 | `POST` | `/api/students/login` | Student login (returns JWT) | ❌ No |
 | `POST` | `/api/exams/create` | Create/schedule an exam | ✅ Yes |
+| `GET` | `/api/exams/academy/:slug` | List all exams for an academy | ❌ No |
 
 For detailed API documentation, see [backend/API_DOCS.md](backend/API_DOCS.md).
 
@@ -84,6 +85,6 @@ For detailed API documentation, see [backend/API_DOCS.md](backend/API_DOCS.md).
   - ✅ Exam Schema
   - ✅ Question Bank (Easy/Medium/Hard)
   - ✅ Exam Creation & Scheduling
-  - ⏳ Exam Listing (Academy-scoped)
+  - ✅ Exam Listing (Academy-scoped)
   - ⏳ Exam Attempts
   - ⏳ Answer Evaluation
