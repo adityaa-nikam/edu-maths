@@ -1,3 +1,4 @@
 export * from './academies';
 export * from './students';
 export * from './questions';
+export * from './exams';
