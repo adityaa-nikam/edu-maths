@@ -1,0 +1,1 @@
+export { authenticateTeacher } from './auth';

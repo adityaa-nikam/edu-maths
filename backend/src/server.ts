@@ -1,11 +1,14 @@
-import dotenv from 'dotenv';
+import 'dotenv/config'; // Must be first!
 import app from './app';
+import { testConnection } from './db/index.js';
 
-dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
+
+  // Test database connection
+  await testConnection();
 });
