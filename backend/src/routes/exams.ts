@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authenticateTeacher } from '../middlewares';
+import { authenticateTeacher, authenticateStudent } from '../middlewares';
 import { db } from '../db';
 import { exams, academies } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -140,6 +140,69 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
         return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to fetch exams',
+        });
+    }
+});
+
+// Check exam status for student
+router.get('/:examId/status', authenticateStudent, async (req: Request, res: Response) => {
+    try {
+        const { examId } = req.params;
+        const studentAcademyId = req.academyId!;
+
+        // 1. Fetch Exam
+        const exam = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.id, examId))
+            .limit(1);
+
+        if (exam.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Exam not found',
+            });
+        }
+
+        const targetExam = exam[0];
+
+        // 2. Verify Exam Belongs to Student's Academy
+        if (targetExam.academyId !== studentAcademyId) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You are not enrolled in this academy',
+            });
+        }
+
+        // 3. Determine Exam Status
+        const now = new Date();
+        const startTime = new Date(targetExam.startTime);
+        const endTime = new Date(targetExam.endTime);
+
+        let status: 'not_started' | 'active' | 'expired';
+
+        if (now < startTime) {
+            status = 'not_started';
+        } else if (now >= startTime && now <= endTime) {
+            status = 'active';
+        } else {
+            status = 'expired';
+        }
+
+        return res.status(200).json({
+            examId: targetExam.id,
+            title: targetExam.title,
+            difficulty: targetExam.difficulty,
+            startTime: targetExam.startTime,
+            endTime: targetExam.endTime,
+            status,
+        });
+
+    } catch (error) {
+        console.error('Error checking exam status:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to check exam status',
         });
     }
 });
