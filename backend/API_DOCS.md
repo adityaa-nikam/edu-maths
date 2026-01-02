@@ -182,3 +182,72 @@ curl http://localhost:3000/api/academy/my-abacus-academy
 - Only returns public fields (name, logo, description)
 - Does not expose sensitive data like clerk_user_id or id
 
+
+---
+
+## POST /api/students/create
+
+Create a new student account for a specific academy.
+
+### Authentication
+Requires Bearer token in Authorization header (Teacher/Academy Owner).
+
+### Request Body
+`json
+{
+  "academyId": "uuid-referencing-academy",
+  "username": "student_username",
+  "password": "secure_password" // min 6 chars
+}
+``n
+### Success Response (201)
+`json
+{
+  "message": "Student created successfully",
+  "student": {
+    "id": "uuid",
+    "username": "student_username",
+    "academyId": "uuid",
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  }
+}
+``n
+### Error Responses
+- **400 Validation Error**: Missing fields or password too short.
+- **403 Forbidden**: Teacher does not own the academy.
+- **409 Conflict**: Username already taken in this academy.
+
+---
+
+## POST /api/students/login
+
+Student login to a specific academy.
+
+### Authentication
+None required (Public).
+
+### Request Body
+`json
+{
+  "academySlug": "my-academy-slug",
+  "username": "student_username",
+  "password": "secure_password"
+}
+``n
+### Success Response (200)
+`json
+{
+  "message": "Login successful",
+  "token": "eyJhbGciOiJIUzI1Ni...", // Student JWT
+  "student": {
+    "id": "uuid",
+    "username": "student_username",
+    "academyId": "uuid",
+    "academyName": "My Academy"
+  }
+}
+``n
+### Error Responses
+- **404 Not Found**: Academy slug not found.
+- **401 Unauthorized**: Invalid username or password.
+

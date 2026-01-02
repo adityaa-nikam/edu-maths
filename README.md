@@ -57,5 +57,7 @@ Clerk "Session Tokens" are extremely short-lived (60 seconds). To test endpoints
 | `GET` | `/api/auth/me` | Returns current authenticated user ID | ✅ Yes |
 | `GET` | `/api/academy/:slug` | Get public academy info | ❌ No |
 | `POST` | `/api/academy/create` | Create a new academy | ✅ Yes |
+| `POST` | `/api/students/create` | Create a new student | ✅ Yes |
+| `POST` | `/api/students/login` | Student login (returns JWT) | ❌ No |
 
 For detailed API documentation, see [backend/API_DOCS.md](backend/API_DOCS.md).
