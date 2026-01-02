@@ -338,3 +338,42 @@ None required (Public).
 - Only returns public fields (id, title, difficulty, start/end times).
 - Does not expose internal data like academyId, totalQuestions, or durationMinutes.
 
+
+---
+
+## GET /api/exams/:examId/status
+
+Check the current status of an exam (student endpoint).
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Success Response (200)
+```json
+{
+  "examId": "uuid",
+  "title": "Monthly Abacus Exam",
+  "difficulty": "medium",
+  "startTime": "2026-01-10T10:00:00.000Z",
+  "endTime": "2026-01-10T10:30:00.000Z",
+  "status": "active" // not_started | active | expired
+}
+```
+
+### Error Responses
+- **401 Unauthorized**: Missing or invalid student JWT.
+- **403 Forbidden**: Exam does not belong to student's academy.
+- **404 Not Found**: Exam not found.
+
+### Status Values
+- **not_started**: Current time is before the exam start time.
+- **active**: Exam is currently in progress (between start and end time).
+- **expired**: Exam has ended (current time is after end time).
+
+### Notes
+- This endpoint enforces academy isolation - students can only check exams from their own academy.
+- No attempt tracking at this stage.
+
