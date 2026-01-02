@@ -3,6 +3,7 @@ import cors from 'cors';
 import { clerkMiddleware } from '@clerk/express';
 import authRoutes from './routes/auth';
 import academyRoutes from './routes/academy';
+import studentRoutes from './routes/students';
 
 const app = express();
 
@@ -37,5 +38,6 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/academy', academyRoutes);
+app.use('/api/students', studentRoutes);
 
 export default app;
