@@ -970,6 +970,99 @@ No request body required.
 - `submittedAt` - Server timestamp when exam was submitted (UTC)
 - `autoSubmitted` - Boolean indicating if submission was after time expired
 
+---
+
+## GET /api/exams/:examId/result
+
+Fetch exam result for a student.
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Request Body
+No request body required.
+
+### Success Response (200)
+```json
+{
+  "score": 8,
+  "totalQuestions": 10,
+  "percentage": 80,
+  "submittedAt": "2026-01-04T10:30:00.000Z"
+}
+```
+
+### Error Responses
+
+#### 400 - Not Submitted Yet
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has not been submitted yet"
+}
+```
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing or invalid student JWT"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not enrolled in this academy"
+}
+```
+
+#### 404 - Exam Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+#### 404 - Not Attempted
+```json
+{
+  "error": "Not Found",
+  "message": "You have not attempted this exam"
+}
+```
+
+### Business Rules
+- ✅ Student must have attempted the exam (exam_attempt must exist)
+- ✅ Exam must be submitted (submittedAt must not be null)
+- ✅ Exam must belong to student's academy (academy isolation)
+- ✅ Only returns score and percentage, not individual answers
+- ✅ Can be called multiple times (idempotent)
+
+### Notes
+- This endpoint can only be accessed after the exam has been submitted.
+- Students can view their results immediately after submission.
+- The result includes score, total questions, percentage, and submission timestamp.
+- Individual question answers are not exposed (for security).
+- Results are permanent and cannot be changed.
+
+### Response Fields
+- `score` - Number of correct answers
+- `totalQuestions` - Total number of questions in the exam
+- `percentage` - Score as a percentage (rounded to nearest integer)
+- `submittedAt` - Server timestamp when exam was submitted (UTC)
+
+### Use Cases
+- Display results page after exam submission
+- Allow students to review their score later
+- Show historical exam performance
+
+
 
 
 
