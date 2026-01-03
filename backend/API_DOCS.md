@@ -377,6 +377,93 @@ Requires Student JWT token in Authorization header.
 - This endpoint enforces academy isolation - students can only check exams from their own academy.
 - No attempt tracking at this stage.
 
+---
+
+## POST /api/exams/:examId/start
+
+Start an exam attempt for a student.
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Success Response (201)
+```json
+{
+  "message": "Exam attempt started successfully",
+  "attemptId": "uuid",
+  "durationMinutes": 30,
+  "serverStartTime": "2026-01-10T10:05:00.000Z"
+}
+```
+
+### Error Responses
+
+#### 400 - Exam Not Started Yet
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has not started yet"
+}
+```
+
+#### 400 - Exam Already Ended
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has already ended"
+}
+```
+
+#### 400 - Already Attempted
+```json
+{
+  "error": "Bad Request",
+  "message": "You have already attempted this exam"
+}
+```
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing or invalid student JWT"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not enrolled in this academy"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+### Business Rules
+- ✅ Exam must exist
+- ✅ Exam must belong to student's academy (academy isolation)
+- ✅ Current time must be within exam window (startTime ≤ now ≤ endTime)
+- ✅ Student can only attempt each exam once (unique constraint enforced)
+- ✅ started_at is set to server's current time
+- ✅ submitted_at and score remain null until submission
+
+### Notes
+- The `serverStartTime` returned is the authoritative start time for the exam.
+- Students should use this time to calculate their remaining duration.
+- The unique constraint on (student_id, exam_id) prevents duplicate attempts.
+- This endpoint creates an entry in the `exam_attempts` table.
+
+
 
 ---
 

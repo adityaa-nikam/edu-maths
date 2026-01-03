@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateTeacher, authenticateStudent } from '../middlewares';
 import { db } from '../db';
-import { exams, academies } from '../db/schema';
+import { exams, academies, examAttempts } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions';
 
@@ -204,6 +204,103 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
         return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to check exam status',
+        });
+    }
+});
+
+// Start exam attempt
+router.post('/:examId/start', authenticateStudent, async (req: Request, res: Response) => {
+    try {
+        const { examId } = req.params;
+        const studentId = req.studentId!;
+        const studentAcademyId = req.academyId!;
+
+        // 1. Verify Exam Exists
+        const exam = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.id, examId))
+            .limit(1);
+
+        if (exam.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Exam not found',
+            });
+        }
+
+        const targetExam = exam[0];
+
+        // 2. Verify Exam Belongs to Student's Academy
+        if (targetExam.academyId !== studentAcademyId) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You are not enrolled in this academy',
+            });
+        }
+
+        // 3. Verify Exam is Active (current time within window)
+        const now = new Date();
+        const startTime = new Date(targetExam.startTime);
+        const endTime = new Date(targetExam.endTime);
+
+        if (now < startTime) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Exam has not started yet',
+            });
+        }
+
+        if (now > endTime) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Exam has already ended',
+            });
+        }
+
+        // 4. Verify Student Has Not Attempted Exam Before
+        const existingAttempt = await db
+            .select()
+            .from(examAttempts)
+            .where(and(
+                eq(examAttempts.examId, examId),
+                eq(examAttempts.studentId, studentId)
+            ))
+            .limit(1);
+
+        if (existingAttempt.length > 0) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'You have already attempted this exam',
+            });
+        }
+
+        // 5. Create Exam Attempt Entry
+        const newAttempt = await db
+            .insert(examAttempts)
+            .values({
+                examId,
+                studentId,
+                startedAt: now,
+            })
+            .returning({
+                id: examAttempts.id,
+                startedAt: examAttempts.startedAt,
+            });
+
+        // 6. Return Attempt Details
+        return res.status(201).json({
+            message: 'Exam attempt started successfully',
+            attemptId: newAttempt[0].id,
+            durationMinutes: targetExam.durationMinutes,
+            serverStartTime: newAttempt[0].startedAt,
+        });
+
+    } catch (error) {
+        console.error('Error starting exam attempt:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to start exam attempt',
         });
     }
 });
