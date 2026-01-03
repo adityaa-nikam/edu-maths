@@ -891,4 +891,82 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
     }
 });
 
+// Get exam result
+router.get('/:examId/result', authenticateStudent, async (req: Request, res: Response) => {
+    try {
+        const { examId } = req.params;
+        const studentId = req.studentId!;
+        const studentAcademyId = req.academyId!;
+
+        // 1. Verify Exam Exists and Belongs to Student's Academy
+        const exam = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.id, examId))
+            .limit(1);
+
+        if (exam.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Exam not found',
+            });
+        }
+
+        if (exam[0].academyId !== studentAcademyId) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You are not enrolled in this academy',
+            });
+        }
+
+        // 2. Verify Attempt Exists
+        const attempt = await db
+            .select()
+            .from(examAttempts)
+            .where(and(
+                eq(examAttempts.examId, examId),
+                eq(examAttempts.studentId, studentId)
+            ))
+            .limit(1);
+
+        if (attempt.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'You have not attempted this exam',
+            });
+        }
+
+        const attemptData = attempt[0];
+
+        // 3. Verify Attempt is Submitted
+        if (attemptData.submittedAt === null) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Exam has not been submitted yet',
+            });
+        }
+
+        // 4. Get total questions count
+        const totalQuestions = await db
+            .select()
+            .from(examAnswers)
+            .where(eq(examAnswers.attemptId, attemptData.id));
+
+        // 5. Return Result
+        return res.status(200).json({
+            score: attemptData.score,
+            totalQuestions: totalQuestions.length,
+            percentage: Math.round((attemptData.score! / totalQuestions.length) * 100),
+            submittedAt: attemptData.submittedAt,
+        });
+
+    } catch (error) {
+        console.error('Error fetching exam result:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch exam result',
+        });
+    }
+});
+
 export default router;
