@@ -569,3 +569,407 @@ Requires Student JWT token in Authorization header.
 - When creating exams, convert local time to UTC before sending startTime.
 - Example: For 2:00 AM IST, send 2026-01-02T20:30:00.000Z (UTC).
 
+---
+
+## POST /api/exams/:examId/answer
+
+Submit an answer for a specific question during an exam attempt.
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Request Body
+```json
+{
+  "questionId": "uuid",
+  "selectedOption": 2
+}
+```
+
+### Success Response (200)
+```json
+{
+  "message": "Answer saved successfully",
+  "questionId": "uuid",
+  "selectedOption": 2
+}
+```
+
+### Error Responses
+
+#### 400 - Validation Error (Missing Fields)
+```json
+{
+  "error": "Validation Error",
+  "message": "questionId and selectedOption are required"
+}
+```
+
+#### 400 - Validation Error (Invalid Option)
+```json
+{
+  "error": "Validation Error",
+  "message": "selectedOption must be a non-negative number"
+}
+```
+
+#### 400 - Attempt Not Started
+```json
+{
+  "error": "Bad Request",
+  "message": "You must start the exam before submitting answers"
+}
+```
+
+#### 400 - Already Submitted
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has already been submitted"
+}
+```
+
+#### 400 - Time Expired
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam time has expired. Please submit the exam."
+}
+```
+
+#### 400 - Invalid Question
+```json
+{
+  "error": "Bad Request",
+  "message": "Question does not belong to this exam attempt"
+}
+```
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing or invalid student JWT"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not enrolled in this academy"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+### Business Rules
+- ✅ Student must have started the exam (exam_attempt must exist)
+- ✅ Exam must not be submitted yet (submittedAt must be null)
+- ✅ Exam time must not have expired (current time ≤ startedAt + durationMinutes)
+- ✅ Question must belong to the student's locked question set
+- ✅ Answers can be overwritten multiple times before final submission
+- ✅ Score is NOT calculated at this stage (only on final submission)
+- ✅ Academy isolation is enforced
+
+### Notes
+- This endpoint allows students to save answers one question at a time.
+- Students can change their answer by calling this endpoint again with the same questionId.
+- The `selectedOption` is saved but NOT evaluated until final submission.
+- The `isCorrect` field in the database is not updated at this stage.
+- This provides auto-save functionality for the exam interface.
+- **Time Validation**: If exam duration has expired, this endpoint will return an error prompting the student to submit the exam.
+
+---
+
+## POST /api/exams/:examId/answers
+
+Submit multiple answers at once (batch submission).
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Request Body
+```json
+{
+  "answers": [
+    {
+      "questionId": "uuid-1",
+      "selectedOption": 2
+    },
+    {
+      "questionId": "uuid-2",
+      "selectedOption": 1
+    },
+    {
+      "questionId": "uuid-3",
+      "selectedOption": 3
+    }
+  ]
+}
+```
+
+### Success Response (200)
+```json
+{
+  "message": "Answers saved successfully",
+  "savedCount": 3,
+  "totalQuestions": 10
+}
+```
+
+### Error Responses
+
+#### 400 - Validation Error (Empty Array)
+```json
+{
+  "error": "Validation Error",
+  "message": "answers array is required and must not be empty"
+}
+```
+
+#### 400 - Validation Error (Invalid Answer)
+```json
+{
+  "error": "Validation Error",
+  "message": "Each answer must have questionId and selectedOption"
+}
+```
+
+#### 400 - Validation Error (Invalid Option)
+```json
+{
+  "error": "Validation Error",
+  "message": "selectedOption must be a non-negative number"
+}
+```
+
+#### 400 - Attempt Not Started
+```json
+{
+  "error": "Bad Request",
+  "message": "You must start the exam before submitting answers"
+}
+```
+
+#### 400 - Already Submitted
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has already been submitted"
+}
+```
+
+#### 400 - Time Expired
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam time has expired. Please submit the exam."
+}
+```
+
+#### 400 - Invalid Question
+```json
+{
+  "error": "Bad Request",
+  "message": "Question {questionId} does not belong to this exam attempt"
+}
+```
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing or invalid student JWT"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not enrolled in this academy"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+### Business Rules
+- ✅ Student must have started the exam (exam_attempt must exist)
+- ✅ Exam must not be submitted yet (submittedAt must be null)
+- ✅ Exam time must not have expired (current time ≤ startedAt + durationMinutes)
+- ✅ All questions must belong to the student's locked question set
+- ✅ Answers can be overwritten by calling this endpoint again
+- ✅ Score is NOT calculated at this stage (only on final submission)
+- ✅ Academy isolation is enforced
+- ✅ Validates all answers before updating any
+
+### Notes
+- This endpoint is more efficient than calling POST /api/exams/:examId/answer multiple times.
+- All answers are validated before any updates occur (atomic validation).
+- Students can submit partial answers (don't need to answer all questions).
+- The `savedCount` indicates how many answers were successfully saved.
+- The `totalQuestions` shows the total number of questions in the exam.
+- Answers can be overwritten by submitting the same questionId again.
+- **Time Validation**: If exam duration has expired, this endpoint will return an error prompting the student to submit the exam.
+
+---
+
+## POST /api/exams/:examId/submit
+
+Submit exam for final evaluation and scoring.
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Request Body
+No request body required.
+
+
+### Success Response (200)
+
+**Manual Submission (within time limit):**
+```json
+{
+  "message": "Exam submitted successfully",
+  "score": 8,
+  "totalQuestions": 10,
+  "percentage": 80,
+  "submittedAt": "2026-01-04T10:30:00.000Z",
+  "autoSubmitted": false
+}
+```
+
+**Auto-Submission (after time expired):**
+```json
+{
+  "message": "Exam auto-submitted (time expired)",
+  "score": 6,
+  "totalQuestions": 10,
+  "percentage": 60,
+  "submittedAt": "2026-01-04T10:45:00.000Z",
+  "autoSubmitted": true
+}
+```
+
+### Error Responses
+
+#### 400 - Attempt Not Started
+```json
+{
+  "error": "Bad Request",
+  "message": "You must start the exam before submitting"
+}
+```
+
+#### 400 - Already Submitted
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has already been submitted"
+}
+```
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing or invalid student JWT"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not enrolled in this academy"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+#### 500 - Internal Server Error
+```json
+{
+  "error": "Internal Server Error",
+  "message": "No answers found for this attempt"
+}
+```
+
+### Business Rules
+- ✅ Student must have started the exam (exam_attempt must exist)
+- ✅ Exam must not be already submitted (submittedAt must be null)
+- ✅ All answers are evaluated against correct answers from question bank
+- ✅ Score is calculated as number of correct answers
+- ✅ `isCorrect` field is updated for each answer in exam_answers table
+- ✅ `submittedAt` timestamp is set to current server time
+- ✅ `score` is saved in exam_attempts table
+- ✅ Academy isolation is enforced
+- ✅ Submission is idempotent-safe (prevents double submission)
+
+### Evaluation Logic
+1. Fetch all student's answers from `exam_answers` table
+2. Fetch correct answers from appropriate question bank (easy/medium/hard)
+3. Compare each student answer with correct answer
+4. Update `isCorrect` field for each answer
+5. Calculate score as count of correct answers
+6. Update exam attempt with score and submission timestamp
+
+### Notes
+- This endpoint performs the final evaluation and locks the exam.
+- Once submitted, answers cannot be changed.
+- The `percentage` is calculated as `(score / totalQuestions) * 100`.
+- All answers are evaluated, including those with placeholder values (selectedOption: 0).
+- Unanswered questions (selectedOption: 0) will be marked as incorrect.
+- The submission timestamp is the server's current time in UTC.
+- This endpoint should be called when student clicks "Submit Exam" or when timer expires.
+
+### Auto-Submit Logic
+- **Expiry Calculation**: `expiryTime = startedAt + durationMinutes`
+- If student submits **after** expiry time:
+  - Exam is still evaluated and scored normally
+  - Response includes `autoSubmitted: true`
+  - Message changes to "Exam auto-submitted (time expired)"
+- If student submits **within** time limit:
+  - Response includes `autoSubmitted: false`
+  - Message is "Exam submitted successfully"
+- **No background jobs**: Auto-submit detection happens on-demand when student submits
+- Unanswered questions are evaluated as incorrect in both cases
+
+### Response Fields
+- `score` - Number of correct answers
+- `totalQuestions` - Total number of questions in the exam
+- `percentage` - Score as a percentage (rounded to nearest integer)
+- `submittedAt` - Server timestamp when exam was submitted (UTC)
+- `autoSubmitted` - Boolean indicating if submission was after time expired
+
+
+
+
