@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { authenticateTeacher, authenticateStudent } from '../middlewares';
 import { db } from '../db';
-import { exams, academies, examAttempts } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema';
+import { eq, and, inArray } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions';
 
 const router = Router();
@@ -275,7 +275,13 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 5. Create Exam Attempt Entry
+        // 5. Fetch Random Questions and Lock Them
+        const randomQuestions = await fetchRandomQuestions(
+            targetExam.difficulty,
+            targetExam.totalQuestions
+        );
+
+        // 6. Create Exam Attempt Entry
         const newAttempt = await db
             .insert(examAttempts)
             .values({
@@ -288,10 +294,23 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
                 startedAt: examAttempts.startedAt,
             });
 
-        // 6. Return Attempt Details
+        const attemptId = newAttempt[0].id;
+
+        // 7. Pre-create exam_answers rows to lock questions
+        // This ensures the student always gets the same questions for this attempt
+        const examAnswerRows = randomQuestions.map(q => ({
+            attemptId,
+            questionId: q.id,
+            selectedOption: 0, // Placeholder - will be updated on submission
+            isCorrect: false,  // Placeholder - will be updated on submission
+        }));
+
+        await db.insert(examAnswers).values(examAnswerRows);
+
+        // 8. Return Attempt Details
         return res.status(201).json({
             message: 'Exam attempt started successfully',
-            attemptId: newAttempt[0].id,
+            attemptId,
             durationMinutes: targetExam.durationMinutes,
             serverStartTime: newAttempt[0].startedAt,
         });
@@ -309,6 +328,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 router.get('/:examId/questions', authenticateStudent, async (req: Request, res: Response) => {
     try {
         const { examId } = req.params;
+        const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
 
         // 1. Fetch Exam
@@ -354,11 +374,70 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
             });
         }
 
-        // 4. Fetch Random Questions
-        const questions = await fetchRandomQuestions(
-            targetExam.difficulty,
-            targetExam.totalQuestions
-        );
+        // 4. Find Student's Attempt for This Exam
+        const attempt = await db
+            .select()
+            .from(examAttempts)
+            .where(and(
+                eq(examAttempts.examId, examId),
+                eq(examAttempts.studentId, studentId)
+            ))
+            .limit(1);
+
+        if (attempt.length === 0) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'You must start the exam before accessing questions',
+            });
+        }
+
+        const attemptId = attempt[0].id;
+
+        // 5. Fetch Locked Question IDs from exam_answers
+        const lockedAnswers = await db
+            .select({
+                questionId: examAnswers.questionId,
+            })
+            .from(examAnswers)
+            .where(eq(examAnswers.attemptId, attemptId));
+
+        if (lockedAnswers.length === 0) {
+            return res.status(500).json({
+                error: 'Internal Server Error',
+                message: 'No questions found for this attempt',
+            });
+        }
+
+        const questionIds = lockedAnswers.map(a => a.questionId);
+
+        // 6. Fetch Question Details (WITHOUT correct_option)
+        // Select the appropriate table based on difficulty
+        let table;
+        switch (targetExam.difficulty) {
+            case 'easy':
+                table = questionsEasy;
+                break;
+            case 'medium':
+                table = questionsMedium;
+                break;
+            case 'hard':
+                table = questionsHard;
+                break;
+            default:
+                return res.status(500).json({
+                    error: 'Internal Server Error',
+                    message: 'Invalid difficulty level',
+                });
+        }
+
+        const questions = await db
+            .select({
+                id: table.id,
+                question: table.question,
+                options: table.options,
+            })
+            .from(table)
+            .where(inArray(table.id, questionIds));
 
         return res.status(200).json({
             examId: targetExam.id,
@@ -366,6 +445,7 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
             difficulty: targetExam.difficulty,
             totalQuestions: targetExam.totalQuestions,
             durationMinutes: targetExam.durationMinutes,
+            attemptId,
             questions,
         });
 

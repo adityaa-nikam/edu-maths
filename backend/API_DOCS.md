@@ -454,6 +454,7 @@ Requires Student JWT token in Authorization header.
 - ✅ Exam must belong to student's academy (academy isolation)
 - ✅ Current time must be within exam window (startTime ≤ now ≤ endTime)
 - ✅ Student can only attempt each exam once (unique constraint enforced)
+- ✅ Questions are randomly selected and locked to this attempt
 - ✅ started_at is set to server's current time
 - ✅ submitted_at and score remain null until submission
 
@@ -462,6 +463,8 @@ Requires Student JWT token in Authorization header.
 - Students should use this time to calculate their remaining duration.
 - The unique constraint on (student_id, exam_id) prevents duplicate attempts.
 - This endpoint creates an entry in the `exam_attempts` table.
+- **Question Locking**: Random questions are selected and locked by pre-creating `exam_answers` rows with question IDs.
+- The same student will always receive the same questions for their attempt, even if they refresh the page.
 
 
 
@@ -469,7 +472,7 @@ Requires Student JWT token in Authorization header.
 
 ## GET /api/exams/:examId/questions
 
-Fetch exam questions for a student (only during active exam time).
+Fetch locked exam questions for a student's specific attempt.
 
 ### Authentication
 Requires Student JWT token in Authorization header.
@@ -485,6 +488,7 @@ Requires Student JWT token in Authorization header.
   "difficulty": "easy",
   "totalQuestions": 10,
   "durationMinutes": 30,
+  "attemptId": "uuid",
   "questions": [
     {
       "id": "uuid",
@@ -496,17 +500,69 @@ Requires Student JWT token in Authorization header.
 ```
 
 ### Error Responses
-- **400 Bad Request**: Exam has not started yet or has already ended.
-- **401 Unauthorized**: Missing or invalid student JWT.
-- **403 Forbidden**: Exam does not belong to student's academy.
-- **404 Not Found**: Exam not found.
+
+#### 400 - Exam Not Started
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has not started yet"
+}
+```
+
+#### 400 - Exam Already Ended
+```json
+{
+  "error": "Bad Request",
+  "message": "Exam has already ended"
+}
+```
+
+#### 400 - Attempt Not Started
+```json
+{
+  "error": "Bad Request",
+  "message": "You must start the exam before accessing questions"
+}
+```
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing or invalid student JWT"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not enrolled in this academy"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+### Business Rules
+- ✅ Student must have started the exam (POST /api/exams/:examId/start)
+- ✅ Questions are fetched from locked `exam_answers` entries
+- ✅ Same student always receives the same questions for their attempt
+- ✅ **Correct answers are NOT included** in the response for security
+- ✅ Exam must be in active state (between startTime and endTime)
+- ✅ Academy isolation is enforced
 
 ### Notes
-- Questions are randomly selected based on exam difficulty and totalQuestions.
-- **Correct answers are NOT included** in the response for security.
-- Exam must be in active state (between startTime and endTime).
-- Academy isolation is enforced.
-- No attempt tracking at this stage.
+- Questions are locked when the student starts the exam (POST /api/exams/:examId/start).
+- This endpoint retrieves the locked questions from the `exam_answers` table.
+- Even if the student refreshes the page, they will receive the same questions.
+- The `attemptId` is included in the response for use in submission.
+- Questions are returned in the order they were locked (database order).
 
 ### Important: Time Zones
 - All times are stored and compared in UTC.
