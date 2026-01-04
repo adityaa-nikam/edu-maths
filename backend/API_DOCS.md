@@ -1175,3 +1175,112 @@ No request body required.
 - Analyze exam performance
 - Identify students who haven't submitted
 
+---
+
+## GET /api/teacher/exams/:examId/summary
+
+Fetch summary statistics for an exam (teacher analytics).
+
+### Authentication
+Requires Clerk teacher JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Request Body
+No request body required.
+
+### Success Response (200)
+```json
+{
+  "examId": "uuid",
+  "examTitle": "Monthly Abacus Exam",
+  "totalQuestions": 10,
+  "difficulty": "medium",
+  "summary": {
+    "totalStudentsAttempted": 15,
+    "totalStudentsSubmitted": 12,
+    "averageScore": 7.5,
+    "highestScore": 10,
+    "lowestScore": 4
+  }
+}
+```
+
+### Error Responses
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Authentication failed"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not authorized to view this exam"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+#### 500 - Internal Server Error
+```json
+{
+  "error": "Internal Server Error",
+  "message": "Failed to fetch exam summary"
+}
+```
+
+### Business Rules
+- ✅ Teacher must be authenticated via Clerk
+- ✅ Exam must exist
+- ✅ Exam must belong to teacher's academy
+- ✅ Statistics calculated only from submitted attempts
+- ✅ In-progress attempts counted in totalStudentsAttempted
+- ✅ Average score rounded to 2 decimal places
+- ✅ Read-only endpoint (no modifications)
+
+### Calculation Logic
+- **totalStudentsAttempted**: Count of all exam_attempts (submitted + in-progress)
+- **totalStudentsSubmitted**: Count of attempts with non-null score
+- **averageScore**: Sum of all scores / totalStudentsSubmitted (rounded to 2 decimals)
+- **highestScore**: Maximum score from submitted attempts
+- **lowestScore**: Minimum score from submitted attempts
+
+### Notes
+- This endpoint provides a quick overview of exam performance.
+- Only submitted attempts (with scores) are used for statistics.
+- If no students have submitted, statistics will be 0.
+- The teacher can only view summaries for exams in their own academy.
+- Useful for dashboard displays and performance tracking.
+
+### Response Fields
+- `examId` - ID of the exam
+- `examTitle` - Title of the exam
+- `totalQuestions` - Number of questions in the exam
+- `difficulty` - Difficulty level (easy/medium/hard)
+- `summary` - Summary statistics object
+  - `totalStudentsAttempted` - Total students who started the exam
+  - `totalStudentsSubmitted` - Total students who submitted
+  - `averageScore` - Average score (rounded to 2 decimals)
+  - `highestScore` - Highest score achieved
+  - `lowestScore` - Lowest score achieved
+
+### Use Cases
+- Dashboard overview of exam performance
+- Quick assessment of exam difficulty
+- Identify if exam was too easy/hard
+- Track completion rate (submitted vs attempted)
+- Compare performance across different exams
+
+
