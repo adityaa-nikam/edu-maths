@@ -7,7 +7,7 @@ Phase 5 implements read-only analytics endpoints for teachers to view exam resul
 
 ## ✅ Implementation Complete
 
-### API Endpoints Implemented (3 total)
+### API Endpoints Implemented (4 total)
 
 #### 1. GET /api/teacher/exams/:examId/attempts
 **Purpose:** Fetch all attempts for a given exam
@@ -111,6 +111,45 @@ Phase 5 implements read-only analytics endpoints for teachers to view exam resul
 
 ---
 
+#### 4. GET /api/teacher/academy/exams
+**Purpose:** Fetch all exams and their results for an academy (dashboard overview)
+
+**Features:**
+- Lists all exams in the academy
+- Shows statistics for each exam
+- Includes exam metadata (difficulty, duration, time window)
+- Provides completion rates
+
+**Statistics Calculated (per exam):**
+- `totalAttempts`: All attempts for the exam
+- `totalSubmitted`: Completed attempts
+- `averageScore`: Mean score (rounded to 2 decimals)
+
+**Response:**
+```json
+{
+  "academyId": "uuid",
+  "academyName": "ABC Abacus Academy",
+  "totalExams": 3,
+  "exams": [
+    {
+      "examId": "uuid",
+      "title": "Monthly Exam - January",
+      "difficulty": "easy",
+      "totalQuestions": 10,
+      "durationMinutes": 30,
+      "startTime": "2026-01-01T00:00:00.000Z",
+      "endTime": "2026-01-31T23:59:59.000Z",
+      "totalAttempts": 15,
+      "totalSubmitted": 12,
+      "averageScore": 7.5
+    }
+  ]
+}
+```
+
+---
+
 ## 🔒 Security Features
 
 ### Authentication & Authorization
@@ -196,6 +235,7 @@ Each endpoint documented with:
 - ✅ Task 1: Fetch all attempts for exam
 - ✅ Task 2: Fetch exam summary statistics
 - ✅ Task 3: Fetch student performance history
+- ✅ Task 4: Fetch all exams for academy (dashboard overview)
 
 ### Ready for Testing
 All endpoints are ready for Postman testing:
@@ -216,6 +256,12 @@ Expected: Statistics (avg, high, low scores)
 ```
 GET /api/teacher/students/:studentId/performance
 Expected: Complete exam history for student
+```
+
+**Test Scenario 4: Academy Exams Overview**
+```
+GET /api/teacher/academy/exams
+Expected: All exams with statistics for dashboard
 ```
 
 ---
@@ -262,6 +308,7 @@ All teacher analytics endpoints have been implemented with:
 | `/api/teacher/exams/:examId/attempts` | GET | List all exam attempts | Clerk Teacher |
 | `/api/teacher/exams/:examId/summary` | GET | Exam statistics | Clerk Teacher |
 | `/api/teacher/students/:studentId/performance` | GET | Student performance history | Clerk Teacher |
+| `/api/teacher/academy/exams` | GET | All exams overview (dashboard) | Clerk Teacher |
 
 ---
 

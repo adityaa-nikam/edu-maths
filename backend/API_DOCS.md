@@ -1432,3 +1432,138 @@ No request body required.
 - Compare performance across different difficulty levels
 - Generate student report cards
 - Identify improvement trends
+
+---
+
+## GET /api/teacher/academy/exams
+
+Fetch all exams and their results for an academy (teacher dashboard overview).
+
+### Authentication
+Requires Clerk teacher JWT token in Authorization header.
+
+### URL Parameters
+None
+
+### Request Body
+No request body required.
+
+### Success Response (200)
+```json
+{
+  "academyId": "uuid",
+  "academyName": "ABC Abacus Academy",
+  "totalExams": 3,
+  "exams": [
+    {
+      "examId": "uuid-1",
+      "title": "Monthly Exam - January",
+      "difficulty": "easy",
+      "totalQuestions": 10,
+      "durationMinutes": 30,
+      "startTime": "2026-01-01T00:00:00.000Z",
+      "endTime": "2026-01-31T23:59:59.000Z",
+      "totalAttempts": 15,
+      "totalSubmitted": 12,
+      "averageScore": 7.5
+    },
+    {
+      "examId": "uuid-2",
+      "title": "Monthly Exam - February",
+      "difficulty": "medium",
+      "totalQuestions": 10,
+      "durationMinutes": 30,
+      "startTime": "2026-02-01T00:00:00.000Z",
+      "endTime": "2026-02-28T23:59:59.000Z",
+      "totalAttempts": 10,
+      "totalSubmitted": 8,
+      "averageScore": 6.25
+    },
+    {
+      "examId": "uuid-3",
+      "title": "Monthly Exam - March",
+      "difficulty": "hard",
+      "totalQuestions": 10,
+      "durationMinutes": 30,
+      "startTime": "2026-03-01T00:00:00.000Z",
+      "endTime": "2026-03-31T23:59:59.000Z",
+      "totalAttempts": 5,
+      "totalSubmitted": 3,
+      "averageScore": 5.67
+    }
+  ]
+}
+```
+
+### Error Responses
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Authentication failed"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Academy not found"
+}
+```
+
+#### 500 - Internal Server Error
+```json
+{
+  "error": "Internal Server Error",
+  "message": "Failed to fetch academy exams"
+}
+```
+
+### Business Rules
+- ✅ Teacher must be authenticated via Clerk
+- ✅ Automatically fetches teacher's academy
+- ✅ Returns all exams for the academy
+- ✅ Calculates statistics for each exam
+- ✅ Includes exam metadata (difficulty, duration, time window)
+- ✅ Read-only endpoint (no modifications)
+
+### Calculation Logic (per exam)
+- **totalAttempts**: Count of all exam_attempts for the exam
+- **totalSubmitted**: Count of attempts with non-null score
+- **averageScore**: Sum of all scores / totalSubmitted (rounded to 2 decimals)
+
+### Notes
+- This endpoint is designed for the teacher dashboard overview.
+- Provides a quick snapshot of all exams and their performance.
+- Includes both active and past exams.
+- Statistics are calculated on-demand for each exam.
+- Useful for identifying which exams need attention.
+- Shows completion rates (totalSubmitted vs totalAttempts).
+
+### Response Fields
+- `academyId` - ID of the teacher's academy
+- `academyName` - Name of the academy
+- `totalExams` - Total number of exams in the academy
+- `exams` - Array of exam objects with statistics
+  - `examId` - ID of the exam
+  - `title` - Title of the exam
+  - `difficulty` - Difficulty level (easy/medium/hard)
+  - `totalQuestions` - Number of questions in the exam
+  - `durationMinutes` - Exam duration in minutes
+  - `startTime` - Exam start time (UTC)
+  - `endTime` - Exam end time (UTC)
+  - `totalAttempts` - Total students who started the exam
+  - `totalSubmitted` - Total students who submitted
+  - `averageScore` - Average score (rounded to 2 decimals)
+
+### Use Cases
+- Teacher dashboard main view
+- Quick overview of all exams
+- Identify low-performing exams
+- Monitor completion rates
+- Compare performance across exams
+- Track exam engagement
+- Identify exams needing review
+

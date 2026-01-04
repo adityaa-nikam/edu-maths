@@ -251,4 +251,84 @@ router.get('/students/:studentId/performance', authenticateTeacher, async (req: 
     }
 });
 
+// Get all exams and their results for an academy (dashboard overview)
+router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Response) => {
+    try {
+        const clerkUserId = req.clerkUserId!;
+
+        // 1. Get Teacher's Academy
+        const academy = await db
+            .select()
+            .from(academies)
+            .where(eq(academies.clerkUserId, clerkUserId))
+            .limit(1);
+
+        if (academy.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Academy not found',
+            });
+        }
+
+        const teacherAcademy = academy[0];
+
+        // 2. Fetch All Exams for Academy
+        const allExams = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.academyId, teacherAcademy.id));
+
+        // 3. For Each Exam, Calculate Statistics
+        const examResults = await Promise.all(
+            allExams.map(async (exam) => {
+                // Fetch all attempts for this exam
+                const attempts = await db
+                    .select({
+                        score: examAttempts.score,
+                    })
+                    .from(examAttempts)
+                    .where(eq(examAttempts.examId, exam.id));
+
+                // Filter submitted attempts
+                const submittedAttempts = attempts.filter(a => a.score !== null);
+
+                // Calculate average score
+                let averageScore = 0;
+                if (submittedAttempts.length > 0) {
+                    const totalScore = submittedAttempts.reduce((sum, a) => sum + a.score!, 0);
+                    averageScore = Math.round((totalScore / submittedAttempts.length) * 100) / 100;
+                }
+
+                return {
+                    examId: exam.id,
+                    title: exam.title,
+                    difficulty: exam.difficulty,
+                    totalQuestions: exam.totalQuestions,
+                    durationMinutes: exam.durationMinutes,
+                    startTime: exam.startTime,
+                    endTime: exam.endTime,
+                    totalAttempts: attempts.length,
+                    totalSubmitted: submittedAttempts.length,
+                    averageScore,
+                };
+            })
+        );
+
+        // 4. Return Results
+        return res.status(200).json({
+            academyId: teacherAcademy.id,
+            academyName: teacherAcademy.name,
+            totalExams: examResults.length,
+            exams: examResults,
+        });
+
+    } catch (error) {
+        console.error('Error fetching academy exams:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch academy exams',
+        });
+    }
+});
+
 export default router;
