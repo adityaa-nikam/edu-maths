@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateTeacher } from '../middlewares';
 import { db } from '../db';
 import { exams, academies, examAttempts, students } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc, asc } from 'drizzle-orm';
 
 const router = Router();
 
@@ -45,7 +45,31 @@ router.get('/exams/:examId/attempts', authenticateTeacher, async (req: Request, 
             });
         }
 
-        // 3. Fetch All Exam Attempts with Student Details
+        // 3. Parse Query Parameters
+        const sortBy = (req.query.sortBy as string) || 'submittedAt';
+        const order = (req.query.order as string) || 'desc';
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+
+        // Validate sortBy
+        const validSortFields = ['score', 'submittedAt'];
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'submittedAt';
+
+        // Validate order
+        const sortOrder = order === 'asc' ? asc : desc;
+
+        // Calculate offset
+        const offset = (page - 1) * limit;
+
+        // 4. Fetch Total Count
+        const totalAttempts = await db
+            .select()
+            .from(examAttempts)
+            .where(eq(examAttempts.examId, examId));
+
+        // 5. Fetch Exam Attempts with Student Details (with sorting and pagination)
+        const sortColumn = sortField === 'score' ? examAttempts.score : examAttempts.submittedAt;
+
         const attempts = await db
             .select({
                 studentId: examAttempts.studentId,
@@ -55,13 +79,19 @@ router.get('/exams/:examId/attempts', authenticateTeacher, async (req: Request, 
             })
             .from(examAttempts)
             .innerJoin(students, eq(examAttempts.studentId, students.id))
-            .where(eq(examAttempts.examId, examId));
+            .where(eq(examAttempts.examId, examId))
+            .orderBy(sortOrder(sortColumn))
+            .limit(limit)
+            .offset(offset);
 
-        // 4. Return Results
+        // 6. Return Results
         return res.status(200).json({
             examId,
             examTitle: targetExam.title,
-            totalAttempts: attempts.length,
+            totalAttempts: totalAttempts.length,
+            page,
+            limit,
+            totalPages: Math.ceil(totalAttempts.length / limit),
             attempts,
         });
 
@@ -204,7 +234,31 @@ router.get('/students/:studentId/performance', authenticateTeacher, async (req: 
             });
         }
 
-        // 3. Fetch All Exam Attempts by Student with Exam Details
+        // 3. Parse Query Parameters
+        const sortBy = (req.query.sortBy as string) || 'submittedAt';
+        const order = (req.query.order as string) || 'desc';
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+
+        // Validate sortBy
+        const validSortFields = ['score', 'submittedAt'];
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'submittedAt';
+
+        // Validate order
+        const sortOrder = order === 'asc' ? asc : desc;
+
+        // Calculate offset
+        const offset = (page - 1) * limit;
+
+        // 4. Fetch Total Count
+        const totalPerformances = await db
+            .select()
+            .from(examAttempts)
+            .where(eq(examAttempts.studentId, studentId));
+
+        // 5. Fetch Exam Attempts by Student with Exam Details (with sorting and pagination)
+        const sortColumn = sortField === 'score' ? examAttempts.score : examAttempts.submittedAt;
+
         const performances = await db
             .select({
                 examId: examAttempts.examId,
@@ -216,12 +270,22 @@ router.get('/students/:studentId/performance', authenticateTeacher, async (req: 
             })
             .from(examAttempts)
             .innerJoin(exams, eq(examAttempts.examId, exams.id))
+            .where(eq(examAttempts.studentId, studentId))
+            .orderBy(sortOrder(sortColumn))
+            .limit(limit)
+            .offset(offset);
+
+        // 6. Calculate Overall Statistics (from all performances, not just paginated)
+        const allPerformances = await db
+            .select({
+                score: examAttempts.score,
+            })
+            .from(examAttempts)
             .where(eq(examAttempts.studentId, studentId));
 
-        // 4. Calculate Overall Statistics
-        const submittedPerformances = performances.filter(p => p.score !== null);
+        const submittedPerformances = allPerformances.filter(p => p.score !== null);
 
-        let totalExamsAttempted = performances.length;
+        let totalExamsAttempted = allPerformances.length;
         let totalExamsSubmitted = submittedPerformances.length;
         let averageScore = 0;
 
@@ -230,7 +294,7 @@ router.get('/students/:studentId/performance', authenticateTeacher, async (req: 
             averageScore = Math.round((totalScore / submittedPerformances.length) * 100) / 100;
         }
 
-        // 5. Return Results
+        // 7. Return Results
         return res.status(200).json({
             studentId,
             studentUsername: targetStudent.username,
@@ -239,6 +303,9 @@ router.get('/students/:studentId/performance', authenticateTeacher, async (req: 
                 totalExamsSubmitted,
                 averageScore,
             },
+            page,
+            limit,
+            totalPages: Math.ceil(totalPerformances.length / limit),
             performances,
         });
 

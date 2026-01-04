@@ -1078,6 +1078,12 @@ Requires Clerk teacher JWT token in Authorization header.
 ### URL Parameters
 - examId (string) - The unique ID of the exam
 
+### Query Parameters (Optional)
+- `sortBy` (string) - Field to sort by: `score` | `submittedAt` (default: `submittedAt`)
+- `order` (string) - Sort order: `asc` | `desc` (default: `desc`)
+- `page` (number) - Page number for pagination (default: `1`)
+- `limit` (number) - Number of results per page (default: `50`)
+
 ### Request Body
 No request body required.
 
@@ -1086,7 +1092,10 @@ No request body required.
 {
   "examId": "uuid",
   "examTitle": "Monthly Abacus Exam",
-  "totalAttempts": 3,
+  "totalAttempts": 15,
+  "page": 1,
+  "limit": 10,
+  "totalPages": 2,
   "attempts": [
     {
       "studentId": "uuid-1",
@@ -1163,11 +1172,36 @@ No request body required.
 - `examId` - ID of the exam
 - `examTitle` - Title of the exam
 - `totalAttempts` - Total number of attempts for this exam
+- `page` - Current page number
+- `limit` - Number of results per page
+- `totalPages` - Total number of pages
 - `attempts` - Array of attempt objects
   - `studentId` - ID of the student
   - `username` - Username of the student
   - `score` - Score achieved (null if not submitted)
   - `submittedAt` - Submission timestamp (null if not submitted)
+
+### Query Parameter Examples
+```
+# Get first page (default sorting by submittedAt desc)
+GET /api/teacher/exams/:examId/attempts
+
+# Sort by score in ascending order
+GET /api/teacher/exams/:examId/attempts?sortBy=score&order=asc
+
+# Get page 2 with 20 results per page
+GET /api/teacher/exams/:examId/attempts?page=2&limit=20
+
+# Sort by score desc, page 1, limit 10
+GET /api/teacher/exams/:examId/attempts?sortBy=score&order=desc&page=1&limit=10
+```
+
+### Pagination Notes
+- Default page size is 50 results
+- Page numbers start at 1
+- `totalPages` helps with UI pagination
+- Invalid parameters fall back to defaults
+
 
 ### Use Cases
 - View all students who attempted an exam
@@ -1296,6 +1330,12 @@ Requires Clerk teacher JWT token in Authorization header.
 ### URL Parameters
 - studentId (string) - The unique ID of the student
 
+### Query Parameters (Optional)
+- `sortBy` (string) - Field to sort by: `score` | `submittedAt` (default: `submittedAt`)
+- `order` (string) - Sort order: `asc` | `desc` (default: `desc`)
+- `page` (number) - Page number for pagination (default: `1`)
+- `limit` (number) - Number of results per page (default: `50`)
+
 ### Request Body
 No request body required.
 
@@ -1309,6 +1349,9 @@ No request body required.
     "totalExamsSubmitted": 4,
     "averageScore": 7.75
   },
+  "page": 1,
+  "limit": 10,
+  "totalPages": 1,
   "performances": [
     {
       "examId": "uuid-1",
@@ -1424,6 +1467,28 @@ No request body required.
   - `totalQuestions` - Number of questions in the exam
   - `score` - Score achieved (null if not submitted)
   - `submittedAt` - Submission timestamp (null if not submitted)
+
+### Query Parameter Examples
+```
+# Get first page (default sorting by submittedAt desc)
+GET /api/teacher/students/:studentId/performance
+
+# Sort by score in ascending order
+GET /api/teacher/students/:studentId/performance?sortBy=score&order=asc
+
+# Get page 2 with 20 results per page
+GET /api/teacher/students/:studentId/performance?page=2&limit=20
+
+# Sort by score desc, page 1, limit 10
+GET /api/teacher/students/:studentId/performance?sortBy=score&order=desc&page=1&limit=10
+```
+
+### Pagination Notes
+- Default page size is 50 results
+- Page numbers start at 1
+- `totalPages` helps with UI pagination
+- Invalid parameters fall back to defaults
+- Overall stats calculated from ALL performances, not just current page
 
 ### Use Cases
 - Track individual student progress
