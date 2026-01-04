@@ -5,6 +5,7 @@ import authRoutes from './routes/auth';
 import academyRoutes from './routes/academy';
 import studentRoutes from './routes/students';
 import examRoutes from './routes/exams';
+import teacherRoutes from './routes/teacher';
 
 const app = express();
 
@@ -41,5 +42,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/academy', academyRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/exams', examRoutes);
+app.use('/api/teacher', teacherRoutes);
 
 export default app;

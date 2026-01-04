@@ -1064,5 +1064,114 @@ No request body required.
 
 
 
+---
 
+# Phase 5: Teacher Analytics API
+
+## GET /api/teacher/exams/:examId/attempts
+
+Fetch all attempts for a given exam (teacher analytics).
+
+### Authentication
+Requires Clerk teacher JWT token in Authorization header.
+
+### URL Parameters
+- examId (string) - The unique ID of the exam
+
+### Request Body
+No request body required.
+
+### Success Response (200)
+```json
+{
+  "examId": "uuid",
+  "examTitle": "Monthly Abacus Exam",
+  "totalAttempts": 3,
+  "attempts": [
+    {
+      "studentId": "uuid-1",
+      "username": "student1",
+      "score": 8,
+      "submittedAt": "2026-01-04T10:30:00.000Z"
+    },
+    {
+      "studentId": "uuid-2",
+      "username": "student2",
+      "score": 6,
+      "submittedAt": "2026-01-04T10:35:00.000Z"
+    },
+    {
+      "studentId": "uuid-3",
+      "username": "student3",
+      "score": 9,
+      "submittedAt": "2026-01-04T10:40:00.000Z"
+    }
+  ]
+}
+```
+
+### Error Responses
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Authentication failed"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not authorized to view this exam"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Exam not found"
+}
+```
+
+#### 500 - Internal Server Error
+```json
+{
+  "error": "Internal Server Error",
+  "message": "Failed to fetch exam attempts"
+}
+```
+
+### Business Rules
+- ✅ Teacher must be authenticated via Clerk
+- ✅ Exam must exist
+- ✅ Exam must belong to teacher's academy
+- ✅ Returns all attempts (submitted and in-progress)
+- ✅ Joins with students table to get usernames
+- ✅ Read-only endpoint (no modifications)
+
+### Notes
+- This endpoint returns all exam attempts for analytics purposes.
+- Only submitted attempts will have a score and submittedAt timestamp.
+- In-progress attempts will have null values for score and submittedAt.
+- The teacher can only view attempts for exams in their own academy.
+- Results are ordered by submission time.
+
+### Response Fields
+- `examId` - ID of the exam
+- `examTitle` - Title of the exam
+- `totalAttempts` - Total number of attempts for this exam
+- `attempts` - Array of attempt objects
+  - `studentId` - ID of the student
+  - `username` - Username of the student
+  - `score` - Score achieved (null if not submitted)
+  - `submittedAt` - Submission timestamp (null if not submitted)
+
+### Use Cases
+- View all students who attempted an exam
+- Check submission status
+- Analyze exam performance
+- Identify students who haven't submitted
 
