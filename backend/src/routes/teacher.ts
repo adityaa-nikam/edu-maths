@@ -165,4 +165,90 @@ router.get('/exams/:examId/summary', authenticateTeacher, async (req: Request, r
     }
 });
 
+// Get all exam performances of a student
+router.get('/students/:studentId/performance', authenticateTeacher, async (req: Request, res: Response) => {
+    try {
+        const { studentId } = req.params;
+        const clerkUserId = req.clerkUserId!;
+
+        // 1. Verify Student Exists
+        const student = await db
+            .select()
+            .from(students)
+            .where(eq(students.id, studentId))
+            .limit(1);
+
+        if (student.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Student not found',
+            });
+        }
+
+        const targetStudent = student[0];
+
+        // 2. Verify Student Belongs to Teacher's Academy
+        const academy = await db
+            .select()
+            .from(academies)
+            .where(and(
+                eq(academies.id, targetStudent.academyId),
+                eq(academies.clerkUserId, clerkUserId)
+            ))
+            .limit(1);
+
+        if (academy.length === 0) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You are not authorized to view this student',
+            });
+        }
+
+        // 3. Fetch All Exam Attempts by Student with Exam Details
+        const performances = await db
+            .select({
+                examId: examAttempts.examId,
+                examTitle: exams.title,
+                difficulty: exams.difficulty,
+                totalQuestions: exams.totalQuestions,
+                score: examAttempts.score,
+                submittedAt: examAttempts.submittedAt,
+            })
+            .from(examAttempts)
+            .innerJoin(exams, eq(examAttempts.examId, exams.id))
+            .where(eq(examAttempts.studentId, studentId));
+
+        // 4. Calculate Overall Statistics
+        const submittedPerformances = performances.filter(p => p.score !== null);
+
+        let totalExamsAttempted = performances.length;
+        let totalExamsSubmitted = submittedPerformances.length;
+        let averageScore = 0;
+
+        if (submittedPerformances.length > 0) {
+            const totalScore = submittedPerformances.reduce((sum, p) => sum + p.score!, 0);
+            averageScore = Math.round((totalScore / submittedPerformances.length) * 100) / 100;
+        }
+
+        // 5. Return Results
+        return res.status(200).json({
+            studentId,
+            studentUsername: targetStudent.username,
+            overallStats: {
+                totalExamsAttempted,
+                totalExamsSubmitted,
+                averageScore,
+            },
+            performances,
+        });
+
+    } catch (error) {
+        console.error('Error fetching student performance:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch student performance',
+        });
+    }
+});
+
 export default router;

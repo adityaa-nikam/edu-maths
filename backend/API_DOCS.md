@@ -1284,3 +1284,151 @@ No request body required.
 - Compare performance across different exams
 
 
+---
+
+## GET /api/teacher/students/:studentId/performance
+
+Fetch all exam performances for a specific student (teacher analytics).
+
+### Authentication
+Requires Clerk teacher JWT token in Authorization header.
+
+### URL Parameters
+- studentId (string) - The unique ID of the student
+
+### Request Body
+No request body required.
+
+### Success Response (200)
+```json
+{
+  "studentId": "uuid",
+  "studentUsername": "student1",
+  "overallStats": {
+    "totalExamsAttempted": 5,
+    "totalExamsSubmitted": 4,
+    "averageScore": 7.75
+  },
+  "performances": [
+    {
+      "examId": "uuid-1",
+      "examTitle": "Monthly Exam - January",
+      "difficulty": "easy",
+      "totalQuestions": 10,
+      "score": 8,
+      "submittedAt": "2026-01-04T10:30:00.000Z"
+    },
+    {
+      "examId": "uuid-2",
+      "examTitle": "Monthly Exam - February",
+      "difficulty": "medium",
+      "totalQuestions": 10,
+      "score": 7,
+      "submittedAt": "2026-02-04T10:30:00.000Z"
+    },
+    {
+      "examId": "uuid-3",
+      "examTitle": "Monthly Exam - March",
+      "difficulty": "hard",
+      "totalQuestions": 10,
+      "score": 9,
+      "submittedAt": "2026-03-04T10:30:00.000Z"
+    },
+    {
+      "examId": "uuid-4",
+      "examTitle": "Monthly Exam - April",
+      "difficulty": "medium",
+      "totalQuestions": 10,
+      "score": 7,
+      "submittedAt": "2026-04-04T10:30:00.000Z"
+    },
+    {
+      "examId": "uuid-5",
+      "examTitle": "Monthly Exam - May",
+      "difficulty": "easy",
+      "totalQuestions": 10,
+      "score": null,
+      "submittedAt": null
+    }
+  ]
+}
+```
+
+### Error Responses
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Authentication failed"
+}
+```
+
+#### 403 - Forbidden
+```json
+{
+  "error": "Forbidden",
+  "message": "You are not authorized to view this student"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "Student not found"
+}
+```
+
+#### 500 - Internal Server Error
+```json
+{
+  "error": "Internal Server Error",
+  "message": "Failed to fetch student performance"
+}
+```
+
+### Business Rules
+- ✅ Teacher must be authenticated via Clerk
+- ✅ Student must exist
+- ✅ Student must belong to teacher's academy
+- ✅ Returns all exam attempts (submitted + in-progress)
+- ✅ Joins with exams table to get exam details
+- ✅ Calculates overall statistics
+- ✅ Read-only endpoint (no modifications)
+
+### Calculation Logic
+- **totalExamsAttempted**: Count of all exam_attempts by student
+- **totalExamsSubmitted**: Count of attempts with non-null score
+- **averageScore**: Sum of all scores / totalExamsSubmitted (rounded to 2 decimals)
+
+### Notes
+- This endpoint provides a complete performance history for a student.
+- Includes both submitted and in-progress exams.
+- In-progress exams will have null values for score and submittedAt.
+- The teacher can only view students from their own academy.
+- Useful for tracking individual student progress over time.
+- Results are ordered by exam creation/attempt time.
+
+### Response Fields
+- `studentId` - ID of the student
+- `studentUsername` - Username of the student
+- `overallStats` - Overall performance statistics
+  - `totalExamsAttempted` - Total exams started by student
+  - `totalExamsSubmitted` - Total exams submitted by student
+  - `averageScore` - Average score across all submitted exams (rounded to 2 decimals)
+- `performances` - Array of exam performance objects
+  - `examId` - ID of the exam
+  - `examTitle` - Title of the exam
+  - `difficulty` - Difficulty level (easy/medium/hard)
+  - `totalQuestions` - Number of questions in the exam
+  - `score` - Score achieved (null if not submitted)
+  - `submittedAt` - Submission timestamp (null if not submitted)
+
+### Use Cases
+- Track individual student progress
+- Identify struggling students
+- Monitor completion rates per student
+- Compare performance across different difficulty levels
+- Generate student report cards
+- Identify improvement trends
