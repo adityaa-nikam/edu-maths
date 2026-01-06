@@ -1,4 +1,5 @@
 import { pgTable, uuid, timestamp, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { exams } from './exams';
 import { students } from './students';
 
@@ -13,6 +14,14 @@ export const examAttempts = pgTable('exam_attempts', {
     return {
         // Unique constraint: one attempt per student per exam
         studentExamIdx: uniqueIndex('student_exam_idx').on(table.studentId, table.examId),
+
+        // CRITICAL FIX: Prevent duplicate submissions (race condition fix)
+        // Only one submission allowed per student per exam
+        // This prevents the race condition where multiple concurrent submit requests
+        // could both succeed. Discovered during load testing with 40 concurrent VUs.
+        uniqueSubmissionIdx: uniqueIndex('unique_submission_idx')
+            .on(table.studentId, table.examId)
+            .where(sql`${table.submittedAt} IS NOT NULL`),
     };
 });
 

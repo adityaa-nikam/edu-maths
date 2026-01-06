@@ -29,6 +29,13 @@
       "when": 1767458439891,
       "tag": "0003_empty_sumo",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1767724013103,
+      "tag": "0004_giant_mathemanic",
+      "breakpoints": true
     }
   ]
 }
