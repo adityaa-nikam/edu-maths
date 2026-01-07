@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Animated, BackHandler } from 'react-native';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { apiClient } from '../../services/api';
 import { examSessionManager } from '../../store/examSession';
 import { dataCache } from '../../store/dataCache';
@@ -20,6 +20,74 @@ interface ExamData {
     attemptId: string;
     questions: Question[];
 }
+
+// Optimized Timer Component (Prevents parent re-renders every second)
+const ExamTimer = memo(({ endTime, onExpire }: { endTime: number; onExpire: (autoSubmit: boolean) => void }) => {
+    const [seconds, setSeconds] = useState(Math.max(0, Math.floor((endTime - Date.now()) / 1000)));
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const now = Date.now();
+            const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+            setSeconds(remaining);
+            if (remaining <= 0) {
+                clearInterval(timer);
+                onExpire(true); // Auto-submit
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [endTime]);
+
+    const formatTime = (s: number): string => {
+        const mins = Math.floor(s / 60);
+        const secs = s % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const isLowTime = seconds <= 300; // 5 minutes warning
+
+    return (
+        <View style={[styles.timerContainer, isLowTime && styles.timerContainerWarning]}>
+            <Text style={styles.timerText}>⏱️ {formatTime(seconds)}</Text>
+        </View>
+    );
+});
+
+// Optimized Option Component
+const OptionItem = memo(({
+    text,
+    index,
+    isSelected,
+    onSelect,
+    disabled
+}: {
+    text: string;
+    index: number;
+    isSelected: boolean;
+    onSelect: (index: number) => void;
+    disabled: boolean;
+}) => {
+    return (
+        <TouchableOpacity
+            style={[
+                styles.optionButton,
+                isSelected && styles.optionButtonSelected,
+                disabled && styles.optionDisabled
+            ]}
+            onPress={() => onSelect(index)}
+            disabled={disabled}
+        >
+            <View style={styles.optionContent}>
+                <View style={[styles.optionCircle, isSelected && styles.optionCircleSelected]}>
+                    {isSelected && <View style={styles.optionCircleInner} />}
+                </View>
+                <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                    {String.fromCharCode(65 + index)}. {text}
+                </Text>
+            </View>
+        </TouchableOpacity>
+    );
+});
 
 // Skeleton Question Loader
 const SkeletonQuestion = ({ isSlow }: { isSlow?: boolean }) => {
@@ -70,7 +138,7 @@ export default function ExamTakingScreen() {
     const [examData, setExamData] = useState<ExamData | null>(null);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<Map<string, number>>(new Map());
-    const [timeRemaining, setTimeRemaining] = useState<number>(0);
+    const [endTime, setEndTime] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [savingAnswer, setSavingAnswer] = useState(false);
@@ -173,9 +241,8 @@ export default function ExamTakingScreen() {
             const session = examSessionManager.getSession();
             const startTime = new Date(session!.startedAt).getTime();
             const duration = session!.durationMinutes * 60 * 1000;
-            const endTime = startTime + duration;
-            const currentRemaining = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-            setTimeRemaining(currentRemaining);
+            const computedEndTime = startTime + duration;
+            setEndTime(computedEndTime);
             return;
         }
 
@@ -197,19 +264,16 @@ export default function ExamTakingScreen() {
                 // Authority: startedAt + durationMinutes
                 const startTime = new Date(session!.startedAt).getTime();
                 const duration = session!.durationMinutes * 60 * 1000;
-                const endTime = startTime + duration;
+                const computedEndTime = startTime + duration;
 
-                // Primary timer sync
-                const currentRemaining = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-
-                if (currentRemaining <= 0) {
+                if (computedEndTime <= Date.now()) {
                     await examSessionManager.expireSession();
                     Alert.alert('Time Expired', 'This exam session has already ended.');
                     router.replace('/(auth)/(tabs)/exam');
                     return;
                 }
 
-                setTimeRemaining(currentRemaining);
+                setEndTime(computedEndTime);
             } else {
                 setError(response.error?.message || 'We could not load your questions. Please check your data connection.');
             }
@@ -222,32 +286,11 @@ export default function ExamTakingScreen() {
         }
     };
 
-    // Autoritative Timer: survive backgrounding
-    useEffect(() => {
-        if (loading || submitting || !examData || hasSubmittedRef.current) return;
-
-        const session = examSessionManager.getSession();
-        const endTime = new Date(session!.startedAt).getTime() + (session!.durationMinutes * 60 * 1000);
-
-        const timer = setInterval(() => {
-            const now = Date.now();
-            const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-
-            setTimeRemaining(remaining);
-
-            if (remaining <= 0) {
-                clearInterval(timer);
-                handleSubmitExam(true);
-            }
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, [loading, submitting, !!examData]);
 
     const [isOffline, setIsOffline] = useState(false);
     const pendingSavesRef = useRef<Set<string>>(new Set());
 
-    const handleSelectOption = (optionIndex: number) => {
+    const handleSelectOption = useCallback((optionIndex: number) => {
         if (!examData || submitting) return;
 
         const currentQuestion = examData.questions[currentQuestionIndex];
@@ -258,7 +301,7 @@ export default function ExamTakingScreen() {
         setAnswers(newAnswers);
 
         saveAnswer(currentQuestion.id, optionIndex);
-    };
+    }, [examData, currentQuestionIndex, answers, submitting]);
 
     const saveAnswer = async (questionId: string, optionIndex: number) => {
         if (answerDebounceRef.current) clearTimeout(answerDebounceRef.current);
@@ -336,7 +379,7 @@ export default function ExamTakingScreen() {
         }
     };
 
-    const handleSubmitExam = (autoSubmit: boolean = false) => {
+    const handleSubmitExam = useCallback((autoSubmit: boolean = false) => {
         if (submitting) return;
 
         if (!autoSubmit) {
@@ -351,7 +394,7 @@ export default function ExamTakingScreen() {
         } else {
             submitExam();
         }
-    };
+    }, [submitting, examData, answers, params.examTitle]);
 
     const submitExam = async () => {
         if (hasSubmittedRef.current) return;
@@ -401,11 +444,6 @@ export default function ExamTakingScreen() {
         }
     };
 
-    const formatTime = (seconds: number): string => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
 
     if (loading) return <SkeletonQuestion isSlow={isSlowConnection} />;
 
@@ -422,7 +460,6 @@ export default function ExamTakingScreen() {
 
     const currentQuestion = examData.questions[currentQuestionIndex];
     const selectedOption = answers.get(currentQuestion.id);
-    const isLowTime = timeRemaining <= 300;
 
     return (
         <View style={styles.container}>
@@ -431,9 +468,12 @@ export default function ExamTakingScreen() {
                     <Text style={styles.title}>{examData.title.toUpperCase()}</Text>
                     <Text style={styles.difficulty}>{examData.difficulty.toUpperCase()}</Text>
                 </View>
-                <View style={[styles.timerContainer, isLowTime && styles.timerContainerWarning]}>
-                    <Text style={styles.timerText}>⏱️ {formatTime(timeRemaining)}</Text>
-                </View>
+                {endTime && (
+                    <ExamTimer
+                        endTime={endTime}
+                        onExpire={handleSubmitExam}
+                    />
+                )}
             </View>
 
             {isOffline && (
@@ -461,21 +501,14 @@ export default function ExamTakingScreen() {
 
                 <View style={styles.optionsContainer}>
                     {currentQuestion.options.map((option, index) => (
-                        <TouchableOpacity
-                            key={index}
-                            style={[styles.optionButton, selectedOption === index && styles.optionButtonSelected]}
-                            onPress={() => handleSelectOption(index)}
+                        <OptionItem
+                            key={`${currentQuestion.id}-${index}`}
+                            text={option}
+                            index={index}
+                            isSelected={selectedOption === index}
+                            onSelect={handleSelectOption}
                             disabled={submitting}
-                        >
-                            <View style={styles.optionContent}>
-                                <View style={[styles.optionCircle, selectedOption === index && styles.optionCircleSelected]}>
-                                    {selectedOption === index && <View style={styles.optionCircleInner} />}
-                                </View>
-                                <Text style={[styles.optionText, selectedOption === index && styles.optionTextSelected]}>
-                                    {String.fromCharCode(65 + index)}. {option}
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                        />
                     ))}
                 </View>
             </ScrollView>
@@ -541,6 +574,7 @@ const styles = StyleSheet.create({
     optionsContainer: { padding: 16, paddingTop: 8 },
     optionButton: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1.5, borderColor: '#dee2e6' },
     optionButtonSelected: { borderColor: '#007AFF', backgroundColor: '#f0f7ff' },
+    optionDisabled: { opacity: 0.6 },
     optionContent: { flexDirection: 'row', alignItems: 'center' },
     optionCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#dee2e6', marginRight: 12, justifyContent: 'center', alignItems: 'center' },
     optionCircleSelected: { borderColor: '#007AFF' },

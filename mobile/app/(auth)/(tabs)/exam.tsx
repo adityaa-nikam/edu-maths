@@ -1,8 +1,8 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, RefreshControl, Animated, AppState, AppStateStatus } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ListRenderItem, ScrollView, Alert, ActivityIndicator, RefreshControl, Animated, AppState, AppStateStatus } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../../store/AuthContext';
 import { apiClient } from '../../../services/api';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { examSessionManager } from '../../../store/examSession';
 import { dataCache } from '../../../store/dataCache';
@@ -60,6 +60,118 @@ const SkeletonExamCard = () => {
         </Animated.View>
     );
 };
+// Memoized Exam Card Component
+const ExamCard = memo(({
+    exam,
+    attempt,
+    globalStatus,
+    onNavigate,
+    statusColors,
+    statusTexts,
+    difficultyColors
+}: {
+    exam: Exam;
+    attempt: ExamAttempt | undefined;
+    globalStatus: GlobalExamStatus;
+    onNavigate: (exam: Exam) => void;
+    statusColors: (status: GlobalExamStatus) => string;
+    statusTexts: (status: GlobalExamStatus) => string;
+    difficultyColors: (diff: string) => string;
+}) => {
+    let displayStatusText = statusTexts(globalStatus);
+    let displayStatusColor = statusColors(globalStatus);
+    let buttonText = 'Upcoming';
+    let isLiveButton = false;
+    let isResultButton = false;
+    let isDisabledButton = true;
+
+    if (attempt) {
+        if (attempt.status === 'submitted') {
+            isResultButton = true;
+            isDisabledButton = false;
+            buttonText = 'View Result';
+            displayStatusText = 'Submitted';
+            displayStatusColor = '#34c759';
+        } else if (attempt.status === 'active') {
+            isLiveButton = true;
+            isDisabledButton = false;
+            buttonText = 'Resume Exam';
+            displayStatusText = 'In Progress';
+            displayStatusColor = '#ff9500';
+        } else if (attempt.status === 'expired') {
+            isResultButton = true;
+            isDisabledButton = false;
+            buttonText = 'View Result';
+            displayStatusText = 'Time Expired';
+            displayStatusColor = '#999';
+        }
+    } else {
+        if (globalStatus === 'active') {
+            isLiveButton = true;
+            isDisabledButton = false;
+            buttonText = 'Start Exam';
+        } else if (globalStatus === 'not_started') {
+            buttonText = 'Upcoming';
+            isDisabledButton = true;
+        } else {
+            buttonText = 'Expired';
+            isDisabledButton = true;
+        }
+    }
+
+    return (
+        <View style={styles.examCard}>
+            <View style={styles.examHeader}>
+                <Text style={styles.examTitle}>{exam.title}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: displayStatusColor }]}>
+                    <Text style={styles.statusText}>{displayStatusText}</Text>
+                </View>
+            </View>
+
+            <View style={styles.examDetails}>
+                <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Difficulty:</Text>
+                    <Text style={[styles.detailValue, { color: difficultyColors(exam.difficulty) }]}>
+                        {exam.difficulty.toUpperCase()}
+                    </Text>
+                </View>
+                <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Start:</Text>
+                    <Text style={styles.detailValue}>{new Date(exam.startTime).toLocaleString()}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>End:</Text>
+                    <Text style={styles.detailValue}>{new Date(exam.endTime).toLocaleString()}</Text>
+                </View>
+            </View>
+
+            {isLiveButton ? (
+                <TouchableOpacity
+                    style={styles.startButton}
+                    onPress={() => onNavigate(exam)}
+                >
+                    <Text style={styles.startButtonText}>{buttonText}</Text>
+                </TouchableOpacity>
+            ) : isResultButton ? (
+                <TouchableOpacity
+                    style={styles.resultButton}
+                    onPress={() => onNavigate(exam)}
+                >
+                    <Text style={styles.resultButtonText}>{buttonText}</Text>
+                </TouchableOpacity>
+            ) : (
+                <TouchableOpacity
+                    style={styles.disabledButton}
+                    disabled={isDisabledButton}
+                    onPress={() => !isDisabledButton && onNavigate(exam)}
+                >
+                    <Text style={styles.disabledButtonText}>{buttonText}</Text>
+                </TouchableOpacity>
+            )}
+        </View>
+    );
+});
+
 export default function ExamScreen() {
     const router = useRouter();
     const { student } = useAuth();
@@ -207,20 +319,40 @@ export default function ExamScreen() {
         });
     };
 
+    const renderExamItem: ListRenderItem<Exam> = useCallback(({ item: exam }) => {
+        const globalStatus = getGlobalStatus(exam);
+        const attempt = attempts.find(a => a.examId === exam.id);
+
+        return (
+            <ExamCard
+                exam={exam}
+                attempt={attempt}
+                globalStatus={globalStatus}
+                onNavigate={handleExamNavigate}
+                statusColors={getStatusColor}
+                statusTexts={getStatusText}
+                difficultyColors={getDifficultyColor}
+            />
+        );
+    }, [attempts, handleExamNavigate]);
+
     return (
-        <ScrollView
-            style={styles.container}
+        <FlatList
+            data={exams}
+            keyExtractor={(item) => item.id}
+            renderItem={renderExamItem}
             refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#007AFF" />
             }
-        >
-            <View style={styles.content}>
+            contentContainerStyle={styles.content}
+            ListHeaderComponent={
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>Available Exams</Text>
                     <Text style={styles.headerSubtitle}>{student?.academyName}</Text>
                 </View>
-
-                {loading && !refreshing ? (
+            }
+            ListEmptyComponent={
+                loading && !refreshing ? (
                     <View>
                         <SkeletonExamCard />
                         <SkeletonExamCard />
@@ -245,7 +377,7 @@ export default function ExamScreen() {
                             </Text>
                         </TouchableOpacity>
                     </View>
-                ) : exams.length === 0 ? (
+                ) : (
                     <View style={styles.emptyState}>
                         <View style={styles.emptyIconContainer}>
                             <Text style={styles.emptyIcon}>📝</Text>
@@ -255,113 +387,16 @@ export default function ExamScreen() {
                             Your academy hasn't scheduled any exams. Check back later!
                         </Text>
                     </View>
-                ) : (
-                    exams.map((exam) => {
-                        const globalStatus = getGlobalStatus(exam);
-                        const attempt = attempts.find(a => a.examId === exam.id);
-
-                        let displayStatusText = getStatusText(globalStatus);
-                        let displayStatusColor = getStatusColor(globalStatus);
-                        let buttonText = 'Upcoming';
-                        let isLiveButton = false;
-                        let isResultButton = false;
-                        let isDisabledButton = true;
-
-                        if (attempt) {
-                            if (attempt.status === 'submitted') {
-                                isResultButton = true;
-                                isDisabledButton = false;
-                                buttonText = 'View Result';
-                                displayStatusText = 'Submitted';
-                                displayStatusColor = '#34c759';
-                            } else if (attempt.status === 'active') {
-                                isLiveButton = true;
-                                isDisabledButton = false;
-                                buttonText = 'Resume Exam';
-                                displayStatusText = 'In Progress';
-                                displayStatusColor = '#ff9500';
-                            } else if (attempt.status === 'expired') {
-                                isResultButton = true;
-                                isDisabledButton = false;
-                                buttonText = 'View Result';
-                                displayStatusText = 'Time Expired';
-                                displayStatusColor = '#999';
-                            }
-                        } else {
-                            // No attempt yet
-                            if (globalStatus === 'active') {
-                                isLiveButton = true;
-                                isDisabledButton = false;
-                                buttonText = 'Start Exam';
-                            } else if (globalStatus === 'not_started') {
-                                buttonText = 'Upcoming';
-                                isDisabledButton = true;
-                            } else {
-                                buttonText = 'Expired';
-                                isDisabledButton = true; // Use gate to show "Missed" state if clicked, but usually just disabled
-                                // Actually, requirement says "If exam is expired: Show Expired"
-                            }
-                        }
-
-                        return (
-                            <View key={exam.id} style={styles.examCard}>
-                                <View style={styles.examHeader}>
-                                    <Text style={styles.examTitle}>{exam.title}</Text>
-                                    <View style={[styles.statusBadge, { backgroundColor: displayStatusColor }]}>
-                                        <Text style={styles.statusText}>{displayStatusText}</Text>
-                                    </View>
-                                </View>
-
-                                <View style={styles.examDetails}>
-                                    <View style={styles.detailRow}>
-                                        <Text style={styles.detailLabel}>Difficulty:</Text>
-                                        <Text style={[styles.detailValue, { color: getDifficultyColor(exam.difficulty) }]}>
-                                            {exam.difficulty.toUpperCase()}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.detailRow}>
-                                        <Text style={styles.detailLabel}>Start:</Text>
-                                        <Text style={styles.detailValue}>{new Date(exam.startTime).toLocaleString()}</Text>
-                                    </View>
-                                    <View style={styles.detailRow}>
-                                        <Text style={styles.detailLabel}>End:</Text>
-                                        <Text style={styles.detailValue}>{new Date(exam.endTime).toLocaleString()}</Text>
-                                    </View>
-                                </View>
-
-                                {isLiveButton ? (
-                                    <TouchableOpacity
-                                        style={styles.startButton}
-                                        onPress={() => handleExamNavigate(exam)}
-                                    >
-                                        <Text style={styles.startButtonText}>{buttonText}</Text>
-                                    </TouchableOpacity>
-                                ) : isResultButton ? (
-                                    <TouchableOpacity
-                                        style={styles.resultButton}
-                                        onPress={() => handleExamNavigate(exam)}
-                                    >
-                                        <Text style={styles.resultButtonText}>{buttonText}</Text>
-                                    </TouchableOpacity>
-                                ) : (
-                                    <TouchableOpacity
-                                        style={styles.disabledButton}
-                                        disabled={isDisabledButton}
-                                        onPress={() => !isDisabledButton && handleExamNavigate(exam)}
-                                    >
-                                        <Text style={styles.disabledButtonText}>{buttonText}</Text>
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-                        );
-                    })
-                )}
-
-                <View style={[styles.apiInfo, { marginTop: 24 }]}>
-                    <Text style={styles.apiInfoText}>✅ Pull down to refresh</Text>
-                </View>
-            </View>
-        </ScrollView>
+                )
+            }
+            ListFooterComponent={
+                exams.length > 0 ? (
+                    <View style={[styles.apiInfo, { marginTop: 8 }]}>
+                        <Text style={styles.apiInfoText}>✅ Pull down to refresh</Text>
+                    </View>
+                ) : null
+            }
+        />
     );
 }
 
