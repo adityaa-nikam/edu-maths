@@ -68,7 +68,8 @@ const ExamCard = memo(({
     onNavigate,
     statusColors,
     statusTexts,
-    difficultyColors
+    difficultyColors,
+    isStarting
 }: {
     exam: Exam;
     attempt: ExamAttempt | undefined;
@@ -77,6 +78,7 @@ const ExamCard = memo(({
     statusColors: (status: GlobalExamStatus) => string;
     statusTexts: (status: GlobalExamStatus) => string;
     difficultyColors: (diff: string) => string;
+    isStarting: boolean;
 }) => {
     let displayStatusText = statusTexts(globalStatus);
     let displayStatusColor = statusColors(globalStatus);
@@ -147,23 +149,33 @@ const ExamCard = memo(({
 
             {isLiveButton ? (
                 <TouchableOpacity
-                    style={styles.startButton}
-                    onPress={() => onNavigate(exam)}
+                    style={[styles.startButton, isStarting && styles.buttonDisabled]}
+                    onPress={() => !isStarting && onNavigate(exam)}
+                    disabled={isStarting}
                 >
-                    <Text style={styles.startButtonText}>{buttonText}</Text>
+                    {isStarting ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                        <Text style={styles.startButtonText}>{buttonText}</Text>
+                    )}
                 </TouchableOpacity>
             ) : isResultButton ? (
                 <TouchableOpacity
-                    style={styles.resultButton}
-                    onPress={() => onNavigate(exam)}
+                    style={[styles.resultButton, isStarting && { opacity: 0.7 }]}
+                    onPress={() => !isStarting && onNavigate(exam)}
+                    disabled={isStarting}
                 >
-                    <Text style={styles.resultButtonText}>{buttonText}</Text>
+                    {isStarting ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                        <Text style={styles.resultButtonText}>{buttonText}</Text>
+                    )}
                 </TouchableOpacity>
             ) : (
                 <TouchableOpacity
                     style={styles.disabledButton}
-                    disabled={isDisabledButton}
-                    onPress={() => !isDisabledButton && onNavigate(exam)}
+                    disabled={isDisabledButton || isStarting}
+                    onPress={() => !isDisabledButton && !isStarting && onNavigate(exam)}
                 >
                     <Text style={styles.disabledButtonText}>{buttonText}</Text>
                 </TouchableOpacity>
@@ -308,6 +320,8 @@ export default function ExamScreen() {
         // Upcoming is purely blocked
         if (globalStatus === 'not_started') return;
 
+        setStartingExamId(exam.id);
+
         // All other states (Live, Expired, Submitted, Active) go to Gate
         // Gate will resolve the true state and redirect correctly
         router.push({
@@ -317,6 +331,9 @@ export default function ExamScreen() {
                 title: exam.title
             }
         });
+
+        // Clear after a small delay to allow navigation to start
+        setTimeout(() => setStartingExamId(null), 2000);
     };
 
     const renderExamItem: ListRenderItem<Exam> = useCallback(({ item: exam }) => {
@@ -332,9 +349,10 @@ export default function ExamScreen() {
                 statusColors={getStatusColor}
                 statusTexts={getStatusText}
                 difficultyColors={getDifficultyColor}
+                isStarting={startingExamId === exam.id}
             />
         );
-    }, [attempts, handleExamNavigate]);
+    }, [attempts, handleExamNavigate, startingExamId]);
 
     return (
         <FlatList

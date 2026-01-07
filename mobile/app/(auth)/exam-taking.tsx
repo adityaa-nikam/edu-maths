@@ -141,7 +141,8 @@ export default function ExamTakingScreen() {
     const [endTime, setEndTime] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [savingAnswer, setSavingAnswer] = useState(false);
+    const [submitSuccess, setSubmitSuccess] = useState(false);
+    const [syncStatus, setSyncStatus] = useState<'none' | 'syncing' | 'synced' | 'failed'>('none');
     const [error, setError] = useState<string | null>(null);
 
     const hasSubmittedRef = useRef(false);
@@ -306,7 +307,7 @@ export default function ExamTakingScreen() {
     const saveAnswer = async (questionId: string, optionIndex: number) => {
         if (answerDebounceRef.current) clearTimeout(answerDebounceRef.current);
 
-        setSavingAnswer(true);
+        setSyncStatus('syncing');
         answerDebounceRef.current = setTimeout(async () => {
             try {
                 const session = examSessionManager.getSession();
@@ -318,15 +319,20 @@ export default function ExamTakingScreen() {
                 if (res.success) {
                     setIsOffline(false);
                     pendingSavesRef.current.delete(questionId);
+                    setSyncStatus('synced');
+                    // Hide "Synced" status after 2 seconds
+                    setTimeout(() => setSyncStatus(prev => prev === 'synced' ? 'none' : prev), 2000);
                 } else if (res.error?.error === 'Network Error' || res.error?.error === 'Timeout') {
                     setIsOffline(true);
                     pendingSavesRef.current.add(questionId);
+                    setSyncStatus('failed');
+                } else {
+                    setSyncStatus('failed');
                 }
             } catch (err) {
                 setIsOffline(true);
                 pendingSavesRef.current.add(questionId);
-            } finally {
-                setSavingAnswer(false);
+                setSyncStatus('failed');
             }
         }, 1000); // 1s debounce
     };
@@ -339,9 +345,11 @@ export default function ExamTakingScreen() {
             if (pendingSavesRef.current.size === 0) return;
 
             console.log(`🔄 Retrying ${pendingSavesRef.current.size} pending answers...`);
+            setSyncStatus('syncing');
             const session = examSessionManager.getSession();
             const examId = session?.examId;
 
+            let allSynced = true;
             for (const qId of Array.from(pendingSavesRef.current)) {
                 const optIndex = answers.get(qId);
                 if (optIndex === undefined) continue;
@@ -353,14 +361,23 @@ export default function ExamTakingScreen() {
                     });
                     if (res.success) {
                         pendingSavesRef.current.delete(qId);
-                        setIsOffline(pendingSavesRef.current.size > 0);
+                    } else {
+                        allSynced = false;
                     }
                 } catch (e) {
-                    setIsOffline(true);
-                    break; // Stop loop if still offline
+                    allSynced = false;
+                    break;
                 }
             }
-        }, 5000); // Check every 5s
+
+            if (allSynced) {
+                setIsOffline(false);
+                setSyncStatus('synced');
+                setTimeout(() => setSyncStatus(prev => prev === 'synced' ? 'none' : prev), 2000);
+            } else {
+                setSyncStatus('failed');
+            }
+        }, 5000);
 
         return () => clearInterval(syncInterval);
     }, [answers, submitting, !!examData]);
@@ -417,17 +434,22 @@ export default function ExamTakingScreen() {
                 dataCache.invalidateAttempts();
                 dataCache.invalidateQuestions(currentExamId);
 
+                // Micro-UX: Success feedback
+                setSubmitSuccess(true);
                 const data = response.data;
-                router.replace({
-                    pathname: '/(auth)/result',
-                    params: {
-                        score: data.score.toString(),
-                        totalQuestions: data.totalQuestions.toString(),
-                        percentage: data.percentage.toString(),
-                        examTitle: currentTitle,
-                        autoSubmitted: data.autoSubmitted ? 'true' : 'false'
-                    }
-                });
+
+                setTimeout(() => {
+                    router.replace({
+                        pathname: '/(auth)/result',
+                        params: {
+                            score: data.score.toString(),
+                            totalQuestions: data.totalQuestions.toString(),
+                            percentage: data.percentage.toString(),
+                            examTitle: currentTitle,
+                            autoSubmitted: data.autoSubmitted ? 'true' : 'false'
+                        }
+                    });
+                }, 1.5 * 1000);
             } else {
                 const isNetworkError = response.error?.error === 'Network Error' || response.error?.error === 'Timeout';
                 Alert.alert(
@@ -478,7 +500,10 @@ export default function ExamTakingScreen() {
 
             {isOffline && (
                 <View style={styles.offlineBanner}>
-                    <Text style={styles.offlineText}>⚠️ Connection lost. Syncing answers in background...</Text>
+                    <Text style={styles.offlineText}>
+                        {syncStatus === 'syncing' ? '🔄 Syncing answers...' : '⚠️ Connection lost. Syncing answers in background...'}
+                    </Text>
+                    {syncStatus === 'syncing' && <ActivityIndicator size="small" color="#fff" style={{ marginLeft: 8 }} />}
                 </View>
             )}
 
@@ -492,9 +517,15 @@ export default function ExamTakingScreen() {
             <ScrollView style={styles.scrollContent}>
                 <View style={styles.questionContainer}>
                     <Text style={styles.questionText}>{currentQuestion.question}</Text>
-                    {savingAnswer && (
+                    {syncStatus !== 'none' && (
                         <View style={styles.savingBadge}>
-                            <ActivityIndicator size="small" color="#007AFF" />
+                            {syncStatus === 'syncing' ? (
+                                <ActivityIndicator size="small" color="#007AFF" />
+                            ) : syncStatus === 'synced' ? (
+                                <Text style={{ color: '#34c759', fontSize: 12, fontWeight: 'bold' }}>✓ Synced</Text>
+                            ) : (
+                                <Text style={{ color: '#dc3545', fontSize: 12, fontWeight: 'bold' }}>⚠️ Failed</Text>
+                            )}
                         </View>
                     )}
                 </View>
@@ -535,16 +566,24 @@ export default function ExamTakingScreen() {
                 {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Submit Exam</Text>}
             </TouchableOpacity>
 
-            {
-                submitting && (
-                    <View style={styles.submittingOverlay}>
-                        <View style={styles.submittingBox}>
-                            <ActivityIndicator size="large" color="#007AFF" />
-                            <Text style={styles.submittingText}>Submitting exam...</Text>
-                        </View>
+            {submitting && (
+                <View style={styles.submittingOverlay}>
+                    <View style={styles.submittingBox}>
+                        {submitSuccess ? (
+                            <>
+                                <Text style={{ fontSize: 40, marginBottom: 12 }}>🎉</Text>
+                                <Text style={styles.submittingText}>Submission Successful!</Text>
+                                <Text style={{ color: '#666', marginTop: 4 }}>Preparing your results...</Text>
+                            </>
+                        ) : (
+                            <>
+                                <ActivityIndicator size="large" color="#007AFF" />
+                                <Text style={styles.submittingText}>Submitting exam...</Text>
+                            </>
+                        )}
                     </View>
-                )
-            }
+                </View>
+            )}
         </View >
     );
 }
@@ -569,7 +608,7 @@ const styles = StyleSheet.create({
     progressBar: { height: 4, backgroundColor: '#e9ecef', borderRadius: 2, overflow: 'hidden' },
     progressFill: { height: '100%', backgroundColor: '#007AFF' },
     questionContainer: { backgroundColor: '#fff', padding: 20, margin: 16, marginBottom: 8, borderRadius: 16, borderWidth: 1, borderColor: '#eee', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, position: 'relative' },
-    questionText: { fontSize: 18, color: '#333', lineHeight: 26, fontWeight: '500' },
+    questionText: { fontSize: 18, color: '#333', lineHeight: 26, fontWeight: '500', paddingRight: 40 },
     savingBadge: { position: 'absolute', top: 12, right: 12 },
     optionsContainer: { padding: 16, paddingTop: 8 },
     optionButton: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1.5, borderColor: '#dee2e6' },
