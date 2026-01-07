@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
 import { apiClient } from '../../services/api';
 import { examSessionManager } from '../../store/examSession';
+import { dataCache } from '../../store/dataCache';
 
 interface Question {
     id: string;
@@ -163,6 +164,21 @@ export default function ExamTakingScreen() {
     const [isSlowConnection, setIsSlowConnection] = useState(false);
 
     const fetchQuestions = async (examId: string) => {
+        // 1. Try Cache First
+        const cachedData = dataCache.getQuestions(examId);
+        if (cachedData) {
+            setExamData(cachedData);
+            setLoading(false);
+
+            const session = examSessionManager.getSession();
+            const startTime = new Date(session!.startedAt).getTime();
+            const duration = session!.durationMinutes * 60 * 1000;
+            const endTime = startTime + duration;
+            const currentRemaining = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
+            setTimeRemaining(currentRemaining);
+            return;
+        }
+
         setLoading(true);
         setError(null);
         setIsSlowConnection(false);
@@ -176,6 +192,7 @@ export default function ExamTakingScreen() {
             const response = await apiClient.get<ExamData>(`/exams/${examId}/questions`);
             if (response.success && response.data) {
                 setExamData(response.data);
+                dataCache.setQuestions(examId, response.data);
 
                 // Authority: startedAt + durationMinutes
                 const startTime = new Date(session!.startedAt).getTime();
@@ -351,6 +368,11 @@ export default function ExamTakingScreen() {
             if (response.success && response.data) {
                 // Authority: Mark as submitted in store
                 await examSessionManager.submitSession(new Date().toISOString());
+
+                // OPTIMIZATION: Invalidate cache so dashboard refreshes
+                dataCache.invalidateExams();
+                dataCache.invalidateAttempts();
+                dataCache.invalidateQuestions(currentExamId);
 
                 const data = response.data;
                 router.replace({

@@ -2,8 +2,10 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIn
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../../store/AuthContext';
 import { apiClient } from '../../../services/api';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { examSessionManager } from '../../../store/examSession';
+import { dataCache } from '../../../store/dataCache';
 
 type GlobalExamStatus = 'not_started' | 'active' | 'expired';
 
@@ -69,33 +71,49 @@ export default function ExamScreen() {
     const [startingExamId, setStartingExamId] = useState<string | null>(null);
     const [isSlowConnection, setIsSlowConnection] = useState(false);
 
-    useEffect(() => {
-        fetchExams();
+    useFocusEffect(
+        useCallback(() => {
+            const cachedExams = dataCache.getExams();
+            const cachedAttempts = dataCache.getAttempts();
 
-        // Auto-refresh when app comes to foreground
+            if (cachedExams && cachedAttempts) {
+                setExams(cachedExams);
+                setAttempts(cachedAttempts);
+                setLoading(false);
+            } else {
+                fetchExams();
+            }
+        }, [])
+    );
+
+    useEffect(() => {
+        // Auto-refresh attempts when app comes to foreground
         const listener = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
             if (nextAppState === 'active') {
-                fetchExams();
+                fetchExams(true); // silent refresh
             }
         });
 
         return () => listener.remove();
     }, []);
 
-    const fetchExams = async () => {
+    const fetchExams = async (isSilent = false) => {
         if (!student?.academySlug) {
             setError('Academy information not available');
             setLoading(false);
             return;
         }
 
-        setError(null);
+        if (!isSilent) setError(null);
         setIsSlowConnection(false);
 
-        // Slow connection detector
-        const slowTimer = setTimeout(() => {
-            if (loading) setIsSlowConnection(true);
-        }, 4000);
+        // Slow connection detector (only if not silent)
+        let slowTimer: any;
+        if (!isSilent) {
+            slowTimer = setTimeout(() => {
+                if (loading) setIsSlowConnection(true);
+            }, 4000);
+        }
 
         try {
             // Fetch exams and attempts in parallel
@@ -110,20 +128,22 @@ export default function ExamScreen() {
                     new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
                 );
                 setExams(sortedExams);
-            } else {
+                dataCache.setExams(sortedExams);
+            } else if (!isSilent) {
                 setError(examsRes.error?.message || 'We could not reach the exam server. Please check your data connection.');
                 setExams([]);
             }
 
             if (attemptsRes.success && attemptsRes.data) {
                 setAttempts(attemptsRes.data);
+                dataCache.setAttempts(attemptsRes.data);
             }
 
-            setError(null);
+            if (!isSilent) setError(null);
         } catch (err) {
-            setError('Connection failed. Please check your internet and try again.');
+            if (!isSilent) setError('Connection failed. Please check your internet and try again.');
         } finally {
-            clearTimeout(slowTimer);
+            if (slowTimer) clearTimeout(slowTimer);
             setLoading(false);
             setIsSlowConnection(false);
             setRefreshing(false);
@@ -217,7 +237,7 @@ export default function ExamScreen() {
                         <Text style={styles.errorText}>❌ {error}</Text>
                         <TouchableOpacity
                             style={styles.retryButton}
-                            onPress={fetchExams}
+                            onPress={() => fetchExams()}
                             disabled={refreshing}
                         >
                             <Text style={styles.retryButtonText}>

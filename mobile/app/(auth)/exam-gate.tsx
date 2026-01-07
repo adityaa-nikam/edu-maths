@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../services/api';
 import { examSessionManager } from '../../store/examSession';
+import { dataCache } from '../../store/dataCache';
 
 /**
  * ExamGate Screen
@@ -93,6 +94,10 @@ export default function ExamGateScreen() {
 
                 if (questionsRes.success) {
                     // a) Attempt EXISTS: Resume exam
+
+                    // OPTIMIZATION: Cache questions now so ExamTaking doesn't refetch
+                    dataCache.setQuestions(examId!, questionsRes.data);
+
                     await examSessionManager.startSession({
                         examId: examId!,
                         attemptId: questionsRes.data.attemptId,
