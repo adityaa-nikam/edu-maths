@@ -134,11 +134,22 @@ class ApiClient {
 
             // Handle other error responses
             if (!response.ok) {
+                let errorMessage = data.message || 'An error occurred';
+
+                // Refine generic messages based on status codes
+                if (response.status === 403) {
+                    errorMessage = data.message || 'You do not have permission to perform this action.';
+                } else if (response.status === 404) {
+                    errorMessage = data.message || 'The requested resource was not found.';
+                } else if (response.status >= 500) {
+                    errorMessage = 'Server error. Please try again later.';
+                }
+
                 return {
                     success: false,
                     error: {
                         error: data.error || 'Request failed',
-                        message: data.message || 'An error occurred',
+                        message: errorMessage,
                         statusCode: response.status,
                     },
                 };

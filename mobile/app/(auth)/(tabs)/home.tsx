@@ -6,7 +6,7 @@
  */
 
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { useAuth } from '../../store/AuthContext';
+import { useAuth } from '../../../store/AuthContext';
 
 export default function HomeScreen() {
     const { student, logout } = useAuth();

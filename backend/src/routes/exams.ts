@@ -194,6 +194,8 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             examId: targetExam.id,
             title: targetExam.title,
             difficulty: targetExam.difficulty,
+            durationMinutes: targetExam.durationMinutes,
+            totalQuestions: targetExam.totalQuestions,
             startTime: targetExam.startTime,
             endTime: targetExam.endTime,
             status,
@@ -446,6 +448,7 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
             totalQuestions: targetExam.totalQuestions,
             durationMinutes: targetExam.durationMinutes,
             attemptId,
+            startedAt: attempt[0].startedAt,
             questions,
         });
 

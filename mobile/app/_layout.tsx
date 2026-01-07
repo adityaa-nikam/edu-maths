@@ -12,14 +12,32 @@ function NavigationContent() {
     useEffect(() => {
         if (isLoading) return; // Wait for session check to complete
 
+        const checkExamSession = async () => {
+            const { examSessionManager } = await import('../store/examSession');
+            const session = await examSessionManager.init();
+
+            if (session && session.examStatus === 'active') {
+                console.log('🔄 Active exam session found, redirecting to Gate:', session.examId);
+                router.replace({
+                    pathname: '/(auth)/exam-gate',
+                    params: { examId: session.examId }
+                });
+                return true;
+            }
+            return false;
+        };
+
         const inAuthGroup = segments[0] === '(auth)';
 
         if (!isAuthenticated && inAuthGroup) {
-            // Redirect to login if not authenticated
             router.replace('/');
         } else if (isAuthenticated && !inAuthGroup) {
-            // Redirect to home if authenticated
-            router.replace('/(auth)/home');
+            // Priority: Check if we need to resume an exam first
+            checkExamSession().then(isRedirecting => {
+                if (!isRedirecting) {
+                    router.replace('/(auth)/(tabs)/home');
+                }
+            });
         }
     }, [isAuthenticated, isLoading, segments]);
 

@@ -1,58 +1,40 @@
-/**
- * Authenticated Layout
- * 
- * Tab navigation for authenticated users.
- * Shows: Home, Exam, Result tabs
- */
+import { Stack } from 'expo-router';
 
-import { Tabs } from 'expo-router';
-import { StyleSheet } from 'react-native';
-
-export default function AuthLayout() {
+export default function AuthStackLayout() {
     return (
-        <Tabs
+        <Stack
             screenOptions={{
-                headerShown: true,
-                headerStyle: {
-                    backgroundColor: '#007AFF',
-                },
-                headerTintColor: '#fff',
-                headerTitleStyle: {
-                    fontWeight: 'bold',
-                },
-                tabBarActiveTintColor: '#007AFF',
-                tabBarInactiveTintColor: '#666',
-                tabBarStyle: {
-                    backgroundColor: '#fff',
-                    borderTopWidth: 1,
-                    borderTopColor: '#ddd',
-                },
+                headerShown: false, // We'll manage headers in individual screens or tabs
+                animation: 'slide_from_right',
             }}
         >
-            <Tabs.Screen
-                name="home"
+            {/* The tabs are the entry point */}
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+            {/* Flow screens */}
+            <Stack.Screen
+                name="exam-gate"
                 options={{
-                    title: 'Home',
-                    tabBarLabel: 'Home',
-                    tabBarIcon: () => null, // Will add icons later
+                    title: 'Exam Summary',
+                    headerShown: true,
+                    headerStyle: { backgroundColor: '#007AFF' },
+                    headerTintColor: '#fff',
                 }}
             />
-            <Tabs.Screen
-                name="exam"
+            <Stack.Screen
+                name="exam-taking"
                 options={{
-                    title: 'Exams',
-                    tabBarLabel: 'Exams',
-                    tabBarIcon: () => null,
+                    headerShown: false,
+                    gestureEnabled: false, // Prevent swiping back during exam
                 }}
             />
-            <Tabs.Screen
+            <Stack.Screen
                 name="result"
                 options={{
-                    title: 'Results',
-                    tabBarLabel: 'Results',
-                    tabBarIcon: () => null,
+                    headerShown: false,
+                    gestureEnabled: false,
                 }}
             />
-        </Tabs>
+        </Stack>
     );
 }

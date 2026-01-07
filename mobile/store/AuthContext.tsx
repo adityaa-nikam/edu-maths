@@ -18,6 +18,7 @@ import {
     getStudentData,
     clearAllData
 } from '../services/storage';
+import { examSessionManager } from './examSession';
 
 interface Student {
     id: string;
@@ -107,6 +108,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             // Clear API client auth token
             clearApiAuthToken();
+
+            // Clear active exam session
+            await examSessionManager.clearSession();
 
             // Update state
             setStudent(null);
