@@ -6,7 +6,7 @@
 
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiClient } from '../../services/api';
 
 interface Question {
@@ -42,15 +42,36 @@ export default function ExamTakingScreen() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
 
+    // Track if exam has been submitted to prevent double submission
+    const hasSubmittedRef = useRef(false);
+
     // Fetch questions on load
     useEffect(() => {
+        // Reset submission flag when component mounts
+        hasSubmittedRef.current = false;
         fetchQuestions();
     }, []);
 
     // Timer countdown
     useEffect(() => {
-        if (timeRemaining <= 0 && examData) {
-            // Auto-submit when time runs out
+        // Don't auto-submit if we're still loading or already submitting
+        if (loading || submitting) {
+            return;
+        }
+
+        // Don't auto-submit if exam data hasn't loaded yet
+        if (!examData) {
+            return;
+        }
+
+        // Don't auto-submit if already submitted
+        if (hasSubmittedRef.current) {
+            return;
+        }
+
+        // Auto-submit when time runs out (but only if we have valid exam data)
+        if (timeRemaining <= 0) {
+            console.log('⏰ Timer expired - auto-submitting exam');
             handleSubmitExam(true);
             return;
         }
@@ -66,7 +87,7 @@ export default function ExamTakingScreen() {
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [timeRemaining, examData]);
+    }, [timeRemaining, examData, loading, submitting]);
 
     const fetchQuestions = async () => {
         setLoading(true);
@@ -156,6 +177,14 @@ export default function ExamTakingScreen() {
     };
 
     const submitExam = async () => {
+        // Prevent double submission
+        if (hasSubmittedRef.current) {
+            console.log('⚠️ Exam already submitted, ignoring duplicate submission');
+            return;
+        }
+
+        // Mark as submitted immediately
+        hasSubmittedRef.current = true;
         setSubmitting(true);
 
         try {
@@ -179,11 +208,15 @@ export default function ExamTakingScreen() {
                 });
             } else {
                 Alert.alert('Error', response.error?.message || 'Failed to submit exam');
+                // Reset flag if submission failed
+                hasSubmittedRef.current = false;
                 setSubmitting(false);
             }
         } catch (error) {
             console.error('❌ Error submitting exam:', error);
             Alert.alert('Error', 'Failed to submit exam');
+            // Reset flag if submission failed
+            hasSubmittedRef.current = false;
             setSubmitting(false);
         }
     };
@@ -383,8 +416,8 @@ const styles = StyleSheet.create({
     },
     header: {
         backgroundColor: '#007AFF',
-        padding: 20,
-        paddingTop: 60,
+        padding: 16,
+        paddingTop: 50,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -394,44 +427,44 @@ const styles = StyleSheet.create({
         marginRight: 12,
     },
     title: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: 'bold',
         color: '#fff',
-        marginBottom: 4,
+        marginBottom: 2,
     },
     difficulty: {
-        fontSize: 12,
+        fontSize: 11,
         color: '#fff',
         opacity: 0.8,
     },
     timerContainer: {
         backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
         borderRadius: 8,
     },
     timerContainerWarning: {
         backgroundColor: '#ff3b30',
     },
     timerText: {
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: 'bold',
         color: '#fff',
     },
     questionIndicator: {
         backgroundColor: '#fff',
-        padding: 12,
+        padding: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#ddd',
     },
     questionNumber: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#666',
         textAlign: 'center',
-        marginBottom: 8,
+        marginBottom: 6,
     },
     progressBar: {
-        height: 4,
+        height: 3,
         backgroundColor: '#e0e0e0',
         borderRadius: 2,
         overflow: 'hidden',
@@ -445,8 +478,9 @@ const styles = StyleSheet.create({
     },
     questionContainer: {
         backgroundColor: '#fff',
-        padding: 20,
-        margin: 16,
+        padding: 16,
+        margin: 12,
+        marginBottom: 8,
         borderRadius: 12,
         borderWidth: 1,
         borderColor: '#ddd',
@@ -457,20 +491,20 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     questionText: {
-        fontSize: 18,
+        fontSize: 17,
         color: '#333',
-        lineHeight: 26,
+        lineHeight: 24,
         fontWeight: '500',
     },
     optionsContainer: {
-        padding: 16,
+        padding: 12,
         paddingTop: 0,
     },
     optionButton: {
         backgroundColor: '#fff',
-        padding: 16,
+        padding: 14,
         borderRadius: 12,
-        marginBottom: 12,
+        marginBottom: 10,
         borderWidth: 2,
         borderColor: '#ddd',
         shadowColor: '#000',

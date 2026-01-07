@@ -44,7 +44,14 @@ export default function ExamScreen() {
 
         if (response.success && response.data) {
             const data = response.data as any;
-            setExams(data.exams || []);
+            const examsList = data.exams || [];
+
+            // Sort exams by startTime in descending order (newest first)
+            const sortedExams = examsList.sort((a: Exam, b: Exam) => {
+                return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+            });
+
+            setExams(sortedExams);
             setError(null);
         } else {
             setError(response.error?.message || 'Failed to load exams');
