@@ -1,45 +1,97 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet } from 'react-native';
+import { View, AppState, AppStateStatus, StyleSheet, Alert } from 'react-native';
 import { AuthProvider, useAuth } from '../store/AuthContext';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { examSessionManager } from '../store/examSession';
+import { setUnauthorizedCallback, setForbiddenCallback } from '../services/api';
 
 function NavigationContent() {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, logout } = useAuth();
     const segments = useSegments();
     const router = useRouter();
+    const appState = useRef(AppState.currentState);
 
     useEffect(() => {
-        if (isLoading) return; // Wait for session check to complete
+        // Centralized Error Handling
+        setUnauthorizedCallback(() => {
+            Alert.alert('Session Expired', 'Please login again.');
+            logout();
+        });
 
-        const checkExamSession = async () => {
-            const { examSessionManager } = await import('../store/examSession');
+        setForbiddenCallback(() => {
+            router.replace('/(auth)/(tabs)/exam');
+        });
+
+        return () => {
+            setUnauthorizedCallback(null);
+            setForbiddenCallback(null);
+        };
+    }, [logout, router]);
+
+    const checkExamSession = async (forceRedirect = false) => {
+        if (!isAuthenticated) return false;
+
+        try {
             const session = await examSessionManager.init();
 
-            if (session && session.examStatus === 'active') {
-                console.log('🔄 Active exam session found, redirecting to Gate:', session.examId);
-                router.replace({
-                    pathname: '/(auth)/exam-gate',
-                    params: { examId: session.examId }
-                });
-                return true;
+            // Priority: If any exam session exists, we must handle it (recovery)
+            if (session && session.examId) {
+                const currentRoute = segments.join('/');
+                const isExamRoute = currentRoute.includes('exam-gate') ||
+                    currentRoute.includes('exam-taking') ||
+                    currentRoute.includes('result');
+
+                // Divert to Gate to resolve session state (Live, Expired, or Submitted)
+                if (!isExamRoute || forceRedirect) {
+                    console.log('🔄 Session Recovery: Diverting to ExamGate for resolution...', session.examStatus);
+                    router.replace({
+                        pathname: '/(auth)/exam-gate',
+                        params: { examId: session.examId }
+                    });
+                    return true;
+                }
             }
-            return false;
-        };
+        } catch (error) {
+            console.error('❌ Corrupted exam session detected, clearing...', error);
+            await examSessionManager.clearSession();
+        }
+        return false;
+    };
+
+    // 1. Initial Load / Auth Change Recovery
+    useEffect(() => {
+        if (isLoading) return;
 
         const inAuthGroup = segments[0] === '(auth)';
 
         if (!isAuthenticated && inAuthGroup) {
             router.replace('/');
         } else if (isAuthenticated && !inAuthGroup) {
-            // Priority: Check if we need to resume an exam first
-            checkExamSession().then(isRedirecting => {
+            checkExamSession(true).then(isRedirecting => {
                 if (!isRedirecting) {
                     router.replace('/(auth)/(tabs)/home');
                 }
             });
         }
-    }, [isAuthenticated, isLoading, segments]);
+    }, [isAuthenticated, isLoading]);
+
+    // 2. Foreground / Resume Recovery
+    useEffect(() => {
+        const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+                console.log('📱 App has come to the foreground, checking session...');
+                checkExamSession();
+            }
+            appState.current = nextAppState;
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+        return () => {
+            subscription.remove();
+        };
+    }, [isAuthenticated, segments]);
 
     // Show nothing while checking session
     if (isLoading) {

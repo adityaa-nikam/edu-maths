@@ -58,6 +58,7 @@ export default function ExamScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [startingExamId, setStartingExamId] = useState<string | null>(null);
+    const [isSlowConnection, setIsSlowConnection] = useState(false);
 
     useEffect(() => {
         fetchExams();
@@ -71,23 +72,35 @@ export default function ExamScreen() {
         }
 
         setError(null);
+        setIsSlowConnection(false);
 
-        const response = await apiClient.get<any>(`/exams/academy/${student.academySlug}`);
+        // Slow connection detector
+        const slowTimer = setTimeout(() => {
+            if (loading) setIsSlowConnection(true);
+        }, 4000);
 
-        if (response.success && response.data) {
-            const examsList = response.data.exams || [];
-            const sortedExams = examsList.sort((a: Exam, b: Exam) =>
-                new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-            );
-            setExams(sortedExams);
-            setError(null);
-        } else {
-            setError(response.error?.message || 'Failed to load exams');
-            setExams([]);
+        try {
+            const response = await apiClient.get<any>(`/exams/academy/${student.academySlug}`);
+
+            if (response.success && response.data) {
+                const examsList = response.data.exams || [];
+                const sortedExams = examsList.sort((a: Exam, b: Exam) =>
+                    new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+                );
+                setExams(sortedExams);
+                setError(null);
+            } else {
+                setError(response.error?.message || 'We could not reach the exam server. Please check your data connection.');
+                setExams([]);
+            }
+        } catch (err) {
+            setError('Connection failed. Please check your internet and try again.');
+        } finally {
+            clearTimeout(slowTimer);
+            setLoading(false);
+            setIsSlowConnection(false);
+            setRefreshing(false);
         }
-
-        setLoading(false);
-        setRefreshing(false);
     };
 
     const onRefresh = () => {
@@ -160,6 +173,12 @@ export default function ExamScreen() {
                         <SkeletonExamCard />
                         <SkeletonExamCard />
                         <SkeletonExamCard />
+                        {isSlowConnection && (
+                            <View style={styles.slowConnectionHint}>
+                                <ActivityIndicator size="small" color="#666" />
+                                <Text style={styles.slowText}>Your connection is a bit slow. Hang tight!</Text>
+                            </View>
+                        )}
                     </View>
                 ) : error ? (
                     <View style={styles.centerContainer}>
@@ -265,6 +284,8 @@ const styles = StyleSheet.create({
     header: { marginBottom: 20 },
     headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1a1a1a' },
     headerSubtitle: { fontSize: 16, color: '#666', marginTop: 4 },
+    slowConnectionHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#fff', borderRadius: 12, marginTop: 10 },
+    slowText: { marginLeft: 10, color: '#666', fontSize: 14, fontWeight: '500' },
     errorText: { fontSize: 16, color: '#dc3545', textAlign: 'center', marginBottom: 20 },
     retryButton: { backgroundColor: '#007AFF', paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12 },
     retryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },

@@ -41,13 +41,36 @@ export default function ExamGateScreen() {
 
             const { status, title } = statusRes.data;
 
-            // Session cleanup rules
-            const currentSession = examSessionManager.getSession();
-            if (currentSession && (currentSession.examId !== examId || status === 'expired' || currentSession.examStatus === 'submitted')) {
-                await examSessionManager.clearSession();
+            // 2. Check for existing submission (Final authority on completion)
+            const resultRes = await apiClient.get<any>(`/exams/${examId}/result`);
+
+            if (resultRes.success) {
+                // CASE: ALREADY SUBMITTED
+                console.log('✅ Exam already submitted, showing result.');
+                await examSessionManager.clearSession(); // Ensure no active session lingers
+
+                router.replace({
+                    pathname: '/(auth)/result',
+                    params: {
+                        score: resultRes.data.score.toString(),
+                        totalQuestions: resultRes.data.totalQuestions.toString(),
+                        percentage: resultRes.data.percentage.toString(),
+                        examTitle: title,
+                        autoSubmitted: resultRes.data.autoSubmitted ? 'true' : 'false'
+                    }
+                });
+                return;
             }
 
-            // 2. Decision Logic Tree
+            // 3. Fallback: Decision Logic Tree for Unsubmitted Exams
+
+            // --- CASE: EXPIRED ---
+            if (status === 'expired') {
+                setErrorMsg('Exam time has expired and no submission was recorded.');
+                await examSessionManager.clearSession();
+                setLoading(false);
+                return;
+            }
 
             // --- CASE: NOT STARTED ---
             if (status === 'not_started') {
@@ -58,11 +81,11 @@ export default function ExamGateScreen() {
 
             // --- CASE: ACTIVE ---
             if (status === 'active') {
-                // Check if attempt already exists
+                // Check if attempt already exists (Resume logic)
                 const questionsRes = await apiClient.get<any>(`/exams/${examId}/questions`);
 
                 if (questionsRes.success) {
-                    // b) Attempt EXISTS: Resume exam
+                    // a) Attempt EXISTS: Resume exam
                     await examSessionManager.startSession({
                         examId: examId!,
                         attemptId: questionsRes.data.attemptId,
@@ -81,11 +104,10 @@ export default function ExamGateScreen() {
                         }
                     });
                 } else if (questionsRes.error?.statusCode === 400) {
-                    // a) Attempt DOES NOT exist: Call start exam API
+                    // b) Attempt DOES NOT exist: Start new attempt
                     const startRes = await apiClient.post<any>(`/exams/${examId}/start`);
 
                     if (startRes.success) {
-                        // Save session state
                         await examSessionManager.startSession({
                             examId: examId!,
                             attemptId: startRes.data.attemptId,
@@ -93,7 +115,6 @@ export default function ExamGateScreen() {
                             durationMinutes: startRes.data.durationMinutes
                         });
 
-                        // Navigate to ExamTaking screen
                         router.replace({
                             pathname: '/(auth)/exam-taking',
                             params: {
@@ -110,30 +131,6 @@ export default function ExamGateScreen() {
                     }
                 } else {
                     setErrorMsg(questionsRes.error?.message || 'Error validating exam session');
-                    setLoading(false);
-                }
-                return;
-            }
-
-            // --- CASE: EXPIRED ---
-            if (status === 'expired') {
-                // Check if exam was submitted
-                const resultRes = await apiClient.get<any>(`/exams/${examId}/result`);
-                if (resultRes.success) {
-                    // a) Submitted: Navigate to ExamResult screen
-                    router.replace({
-                        pathname: '/(auth)/result',
-                        params: {
-                            score: resultRes.data.score.toString(),
-                            totalQuestions: resultRes.data.totalQuestions.toString(),
-                            percentage: resultRes.data.percentage.toString(),
-                            examTitle: title,
-                            autoSubmitted: 'false'
-                        }
-                    });
-                } else {
-                    // b) Not submitted: Block access
-                    setErrorMsg('Exam time expired');
                     setLoading(false);
                 }
                 return;

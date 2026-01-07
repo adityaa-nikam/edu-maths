@@ -16,6 +16,7 @@ export default function ResultScreen() {
     const params = useLocalSearchParams<{ examTitle: string }>();
     const [result, setResult] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [isSlow, setIsSlow] = useState(false);
     const navigation = useNavigation();
 
     useEffect(() => {
@@ -45,6 +46,9 @@ export default function ResultScreen() {
 
     const fetchFinalResult = async (examId: string) => {
         setLoading(true);
+        setIsSlow(false);
+        const slowTimer = setTimeout(() => setIsSlow(true), 4000);
+
         try {
             const response = await apiClient.get<any>(`/exams/${examId}/result`);
             if (response.success && response.data) {
@@ -57,7 +61,9 @@ export default function ResultScreen() {
             Alert.alert('Connection Error', 'Could not sync results with server.');
             router.replace('/(auth)/(tabs)/home');
         } finally {
+            clearTimeout(slowTimer);
             setLoading(false);
+            setIsSlow(false);
         }
     };
 
@@ -72,6 +78,9 @@ export default function ResultScreen() {
             <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color="#007AFF" />
                 <Text style={styles.loadingText}>Finalizing your results...</Text>
+                {isSlow && (
+                    <Text style={styles.slowText}>This is taking longer than usual, please wait...</Text>
+                )}
             </View>
         );
     }
@@ -116,7 +125,7 @@ export default function ResultScreen() {
             {/* Main Content */}
             <View style={styles.content}>
                 {/* Exam Title */}
-                <Text style={styles.examTitle}>{params.examTitle}</Text>
+                <Text style={styles.examTitle}>{examTitle}</Text>
 
                 {/* Score Circle */}
                 <View style={[styles.scoreCircle, { borderColor: getScoreColor() }]}>
@@ -198,6 +207,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
         fontWeight: '600',
+    },
+    slowText: {
+        marginTop: 10,
+        fontSize: 14,
+        color: '#888',
+        fontStyle: 'italic',
     },
     header: {
         backgroundColor: '#007AFF',

@@ -21,7 +21,7 @@ interface ExamData {
 }
 
 // Skeleton Question Loader
-const SkeletonQuestion = () => {
+const SkeletonQuestion = ({ isSlow }: { isSlow?: boolean }) => {
     const pulseAnim = useRef(new Animated.Value(0.3)).current;
 
     useEffect(() => {
@@ -44,6 +44,12 @@ const SkeletonQuestion = () => {
                         <View key={i} style={styles.skeletonOption} />
                     ))}
                 </View>
+                {isSlow && (
+                    <View style={styles.slowConnectionHintTaking}>
+                        <ActivityIndicator size="small" color="#666" />
+                        <Text style={styles.slowTextTaking}>Taking a moment to sync with server...</Text>
+                    </View>
+                )}
             </ScrollView>
             <View style={styles.skeletonNav} />
         </Animated.View>
@@ -73,34 +79,62 @@ export default function ExamTakingScreen() {
     const answerDebounceRef = useRef<NodeJS.Timeout | null>(null);
     const navigation = useNavigation();
 
+    const isConfirmedRef = useRef(false);
+
     // Back Button and Tab Safety
     useEffect(() => {
         const handleBackAction = () => {
-            if (hasSubmittedRef.current) return false;
+            if (hasSubmittedRef.current || submitting || isConfirmedRef.current) return false;
 
-            Alert.alert('Exit Exam?', 'Are you sure you want to exit? Your progress may not be fully saved.', [
-                { text: 'Stay', style: 'cancel' },
-                { text: 'Exit', style: 'destructive', onPress: () => router.replace('/(auth)/(tabs)/exam') },
-            ]);
+            Alert.alert(
+                'Leaving Exam?',
+                'Are you sure you want to leave? \n\n⚠️ The timer will NOT pause. \n⚠️ You might lose unsaved progress.',
+                [
+                    { text: 'Stay & Continue', style: 'cancel' },
+                    {
+                        text: 'Exit Exam',
+                        style: 'destructive',
+                        onPress: () => {
+                            isConfirmedRef.current = true;
+                            router.replace('/(auth)/(tabs)/exam');
+                        }
+                    },
+                ],
+                { cancelable: true }
+            );
             return true;
         };
 
         const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackAction);
 
         const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-            if (hasSubmittedRef.current) return;
+            if (hasSubmittedRef.current || submitting || isConfirmedRef.current) return;
+
+            // If we are already trying to exit via handleBackAction, don't show double alerts
+            // But beforeRemove handles more than just back (like tab clicks if they trigger navigation)
             e.preventDefault();
-            Alert.alert('Exit Exam?', 'Are you sure you want to exit? Your progress may not be fully saved.', [
-                { text: 'Stay', style: 'cancel' },
-                { text: 'Exit', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
-            ]);
+            Alert.alert(
+                'Leave Exam Session?',
+                'The exam is still active. \n\n⚠️ Leaving will NOT stop the timer. \n⚠️ You will need to resume from the Exam List.',
+                [
+                    { text: 'Stay', style: 'cancel' },
+                    {
+                        text: 'Leave Anyway',
+                        style: 'destructive',
+                        onPress: () => {
+                            isConfirmedRef.current = true;
+                            navigation.dispatch(e.data.action);
+                        }
+                    },
+                ]
+            );
         });
 
         return () => {
             backHandler.remove();
             unsubscribe();
         };
-    }, [navigation]);
+    }, [navigation, submitting]);
 
     useEffect(() => {
         // 1. Strict Entry Condition Guard
@@ -126,10 +160,17 @@ export default function ExamTakingScreen() {
         };
     }, []);
 
+    const [isSlowConnection, setIsSlowConnection] = useState(false);
+
     const fetchQuestions = async (examId: string) => {
         setLoading(true);
         setError(null);
+        setIsSlowConnection(false);
         const session = examSessionManager.getSession();
+
+        const slowTimer = setTimeout(() => {
+            if (loading) setIsSlowConnection(true);
+        }, 4000);
 
         try {
             const response = await apiClient.get<ExamData>(`/exams/${examId}/questions`);
@@ -153,12 +194,14 @@ export default function ExamTakingScreen() {
 
                 setTimeRemaining(currentRemaining);
             } else {
-                setError(response.error?.message || 'Failed to load questions');
+                setError(response.error?.message || 'We could not load your questions. Please check your data connection.');
             }
         } catch (err) {
-            setError('Unable to load exam questions. Please check your connection.');
+            setError('Unable to load exam questions. Please check your connection and try again.');
         } finally {
+            clearTimeout(slowTimer);
             setLoading(false);
+            setIsSlowConnection(false);
         }
     };
 
@@ -184,6 +227,9 @@ export default function ExamTakingScreen() {
         return () => clearInterval(timer);
     }, [loading, submitting, !!examData]);
 
+    const [isOffline, setIsOffline] = useState(false);
+    const pendingSavesRef = useRef<Set<string>>(new Set());
+
     const handleSelectOption = (optionIndex: number) => {
         if (!examData || submitting) return;
 
@@ -194,25 +240,70 @@ export default function ExamTakingScreen() {
         newAnswers.set(currentQuestion.id, optionIndex);
         setAnswers(newAnswers);
 
-        // Debounced API Save
+        saveAnswer(currentQuestion.id, optionIndex);
+    };
+
+    const saveAnswer = async (questionId: string, optionIndex: number) => {
         if (answerDebounceRef.current) clearTimeout(answerDebounceRef.current);
 
         setSavingAnswer(true);
         answerDebounceRef.current = setTimeout(async () => {
             try {
                 const session = examSessionManager.getSession();
-                await apiClient.post(`/exams/${session?.examId}/answer`, {
-                    questionId: currentQuestion.id,
+                const res = await apiClient.post(`/exams/${session?.examId}/answer`, {
+                    questionId,
                     selectedOption: optionIndex
                 });
+
+                if (res.success) {
+                    setIsOffline(false);
+                    pendingSavesRef.current.delete(questionId);
+                } else if (res.error?.error === 'Network Error' || res.error?.error === 'Timeout') {
+                    setIsOffline(true);
+                    pendingSavesRef.current.add(questionId);
+                }
             } catch (err) {
-                console.error('❌ Failed to auto-save answer:', err);
-                // We don't block the user, but we show a small indicator if needed
+                setIsOffline(true);
+                pendingSavesRef.current.add(questionId);
             } finally {
                 setSavingAnswer(false);
             }
         }, 1000); // 1s debounce
     };
+
+    // Retry Background Sync for Offline Answers
+    useEffect(() => {
+        if (submitting || !examData) return;
+
+        const syncInterval = setInterval(async () => {
+            if (pendingSavesRef.current.size === 0) return;
+
+            console.log(`🔄 Retrying ${pendingSavesRef.current.size} pending answers...`);
+            const session = examSessionManager.getSession();
+            const examId = session?.examId;
+
+            for (const qId of Array.from(pendingSavesRef.current)) {
+                const optIndex = answers.get(qId);
+                if (optIndex === undefined) continue;
+
+                try {
+                    const res = await apiClient.post(`/exams/${examId}/answer`, {
+                        questionId: qId,
+                        selectedOption: optIndex
+                    });
+                    if (res.success) {
+                        pendingSavesRef.current.delete(qId);
+                        setIsOffline(pendingSavesRef.current.size > 0);
+                    }
+                } catch (e) {
+                    setIsOffline(true);
+                    break; // Stop loop if still offline
+                }
+            }
+        }, 5000); // Check every 5s
+
+        return () => clearInterval(syncInterval);
+    }, [answers, submitting, !!examData]);
 
     const goToNextQuestion = () => {
         if (!examData || submitting) return;
@@ -273,12 +364,16 @@ export default function ExamTakingScreen() {
                     }
                 });
             } else {
-                Alert.alert('Error', response.error?.message || 'Failed to submit exam');
+                const isNetworkError = response.error?.error === 'Network Error' || response.error?.error === 'Timeout';
+                Alert.alert(
+                    isNetworkError ? 'Connection Error' : 'Submission Failed',
+                    response.error?.message || 'Failed to submit exam'
+                );
                 hasSubmittedRef.current = false;
                 setSubmitting(false);
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to submit exam');
+            Alert.alert('Error', 'Failed to submit exam. Please check your connection and try again.');
             hasSubmittedRef.current = false;
             setSubmitting(false);
         }
@@ -290,7 +385,7 @@ export default function ExamTakingScreen() {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    if (loading) return <SkeletonQuestion />;
+    if (loading) return <SkeletonQuestion isSlow={isSlowConnection} />;
 
     if (!examData) {
         return (
@@ -318,6 +413,12 @@ export default function ExamTakingScreen() {
                     <Text style={styles.timerText}>⏱️ {formatTime(timeRemaining)}</Text>
                 </View>
             </View>
+
+            {isOffline && (
+                <View style={styles.offlineBanner}>
+                    <Text style={styles.offlineText}>⚠️ Connection lost. Syncing answers in background...</Text>
+                </View>
+            )}
 
             <View style={styles.questionIndicator}>
                 <Text style={styles.questionNumber}>Question {currentQuestionIndex + 1} of {examData.totalQuestions}</Text>
@@ -379,15 +480,17 @@ export default function ExamTakingScreen() {
                 {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Submit Exam</Text>}
             </TouchableOpacity>
 
-            {submitting && (
-                <View style={styles.submittingOverlay}>
-                    <View style={styles.submittingBox}>
-                        <ActivityIndicator size="large" color="#007AFF" />
-                        <Text style={styles.submittingText}>Submitting exam...</Text>
+            {
+                submitting && (
+                    <View style={styles.submittingOverlay}>
+                        <View style={styles.submittingBox}>
+                            <ActivityIndicator size="large" color="#007AFF" />
+                            <Text style={styles.submittingText}>Submitting exam...</Text>
+                        </View>
                     </View>
-                </View>
-            )}
-        </View>
+                )
+            }
+        </View >
     );
 }
 
@@ -402,6 +505,10 @@ const styles = StyleSheet.create({
     timerContainer: { backgroundColor: 'rgba(255, 255, 255, 0.2)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
     timerContainerWarning: { backgroundColor: '#ff3b30' },
     timerText: { fontSize: 15, fontWeight: 'bold', color: '#fff' },
+    offlineBanner: { backgroundColor: '#ff9500', padding: 8, alignItems: 'center' },
+    offlineText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+    slowConnectionHintTaking: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: '#f8f9fa', marginHorizontal: 16, borderRadius: 12 },
+    slowTextTaking: { marginLeft: 10, color: '#666', fontSize: 14, fontStyle: 'italic' },
     questionIndicator: { backgroundColor: '#fff', padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
     questionNumber: { fontSize: 13, color: '#666', textAlign: 'center', marginBottom: 8 },
     progressBar: { height: 4, backgroundColor: '#e9ecef', borderRadius: 2, overflow: 'hidden' },

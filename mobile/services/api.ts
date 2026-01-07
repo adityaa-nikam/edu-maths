@@ -37,6 +37,7 @@ class ApiClient {
     private timeout: number;
     private authToken: string | null = null;
     private onUnauthorized: UnauthorizedCallback | null = null;
+    private onForbidden: UnauthorizedCallback | null = null;
 
     constructor(baseUrl: string, timeout: number) {
         this.baseUrl = baseUrl;
@@ -45,10 +46,16 @@ class ApiClient {
 
     /**
      * Set callback for unauthorized requests (401)
-     * This will be called automatically when API returns 401
      */
     setUnauthorizedCallback(callback: UnauthorizedCallback | null) {
         this.onUnauthorized = callback;
+    }
+
+    /**
+     * Set callback for forbidden requests (403)
+     */
+    setForbiddenCallback(callback: UnauthorizedCallback | null) {
+        this.onForbidden = callback;
     }
 
     /**
@@ -139,6 +146,9 @@ class ApiClient {
                 // Refine generic messages based on status codes
                 if (response.status === 403) {
                     errorMessage = data.message || 'You do not have permission to perform this action.';
+                    if (this.onForbidden) {
+                        this.onForbidden();
+                    }
                 } else if (response.status === 404) {
                     errorMessage = data.message || 'The requested resource was not found.';
                 } else if (response.status >= 500) {
@@ -228,3 +238,5 @@ export const getAuthToken = () => apiClient.getAuthToken();
 export const clearAuthToken = () => apiClient.clearAuthToken();
 export const setUnauthorizedCallback = (callback: UnauthorizedCallback | null) =>
     apiClient.setUnauthorizedCallback(callback);
+export const setForbiddenCallback = (callback: UnauthorizedCallback | null) =>
+    apiClient.setForbiddenCallback(callback);
