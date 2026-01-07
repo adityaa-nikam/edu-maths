@@ -1,9 +1,12 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, RefreshControl, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, RefreshControl, Animated, AppState, AppStateStatus } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../../store/AuthContext';
 import { apiClient } from '../../../services/api';
 import { useState, useEffect, useRef } from 'react';
 import { examSessionManager } from '../../../store/examSession';
+
+type GlobalExamStatus = 'not_started' | 'active' | 'expired';
+
 interface Exam {
     id: string;
     title: string;
@@ -12,7 +15,12 @@ interface Exam {
     endTime: string;
 }
 
-type ExamStatus = 'not_started' | 'active' | 'expired';
+interface ExamAttempt {
+    examId: string;
+    status: 'active' | 'submitted' | 'expired';
+    attemptId: string;
+    submittedAt: string | null;
+}
 
 // Skeleton Card Component with Pulse Animation
 const SkeletonExamCard = () => {
@@ -54,6 +62,7 @@ export default function ExamScreen() {
     const router = useRouter();
     const { student } = useAuth();
     const [exams, setExams] = useState<Exam[]>([]);
+    const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -62,6 +71,15 @@ export default function ExamScreen() {
 
     useEffect(() => {
         fetchExams();
+
+        // Auto-refresh when app comes to foreground
+        const listener = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'active') {
+                fetchExams();
+            }
+        });
+
+        return () => listener.remove();
     }, []);
 
     const fetchExams = async () => {
@@ -80,19 +98,28 @@ export default function ExamScreen() {
         }, 4000);
 
         try {
-            const response = await apiClient.get<any>(`/exams/academy/${student.academySlug}`);
+            // Fetch exams and attempts in parallel
+            const [examsRes, attemptsRes] = await Promise.all([
+                apiClient.get<any>(`/exams/academy/${student.academySlug}`),
+                apiClient.get<ExamAttempt[]>('/students/exam-attempts')
+            ]);
 
-            if (response.success && response.data) {
-                const examsList = response.data.exams || [];
+            if (examsRes.success && examsRes.data) {
+                const examsList = examsRes.data.exams || [];
                 const sortedExams = examsList.sort((a: Exam, b: Exam) =>
                     new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
                 );
                 setExams(sortedExams);
-                setError(null);
             } else {
-                setError(response.error?.message || 'We could not reach the exam server. Please check your data connection.');
+                setError(examsRes.error?.message || 'We could not reach the exam server. Please check your data connection.');
                 setExams([]);
             }
+
+            if (attemptsRes.success && attemptsRes.data) {
+                setAttempts(attemptsRes.data);
+            }
+
+            setError(null);
         } catch (err) {
             setError('Connection failed. Please check your internet and try again.');
         } finally {
@@ -103,12 +130,7 @@ export default function ExamScreen() {
         }
     };
 
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchExams();
-    };
-
-    const getExamStatus = (exam: Exam): ExamStatus => {
+    const getGlobalStatus = (exam: Exam): GlobalExamStatus => {
         const now = new Date();
         const startTime = new Date(exam.startTime);
         const endTime = new Date(exam.endTime);
@@ -118,7 +140,7 @@ export default function ExamScreen() {
         return 'expired';
     };
 
-    const getStatusColor = (status: ExamStatus): string => {
+    const getStatusColor = (status: GlobalExamStatus): string => {
         switch (status) {
             case 'active': return '#34c759';
             case 'not_started': return '#007AFF';
@@ -126,7 +148,7 @@ export default function ExamScreen() {
         }
     };
 
-    const getStatusText = (status: ExamStatus): string => {
+    const getStatusText = (status: GlobalExamStatus): string => {
         switch (status) {
             case 'active': return 'Live Now';
             case 'not_started': return 'Not Started';
@@ -143,15 +165,25 @@ export default function ExamScreen() {
         }
     };
 
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchExams();
+    };
+
     const handleExamNavigate = (exam: Exam) => {
-        const status = getExamStatus(exam);
+        const globalStatus = getGlobalStatus(exam);
 
-        // Navigation logic: both Live and Expired go to Gate
-        if (status === 'not_started') return;
+        // Upcoming is purely blocked
+        if (globalStatus === 'not_started') return;
 
+        // All other states (Live, Expired, Submitted, Active) go to Gate
+        // Gate will resolve the true state and redirect correctly
         router.push({
             pathname: '/(auth)/exam-gate',
-            params: { examId: exam.id }
+            params: {
+                examId: exam.id,
+                title: exam.title
+            }
         });
     };
 
@@ -205,19 +237,58 @@ export default function ExamScreen() {
                     </View>
                 ) : (
                     exams.map((exam) => {
-                        const status = getExamStatus(exam);
-                        const isStarting = startingExamId === exam.id;
+                        const globalStatus = getGlobalStatus(exam);
+                        const attempt = attempts.find(a => a.examId === exam.id);
 
-                        // Check session store to see if this exam can be resumed
-                        const activeSession = examSessionManager.getSession();
-                        const isResumable = activeSession?.examId === exam.id && activeSession.examStatus === 'active';
+                        let displayStatusText = getStatusText(globalStatus);
+                        let displayStatusColor = getStatusColor(globalStatus);
+                        let buttonText = 'Upcoming';
+                        let isLiveButton = false;
+                        let isResultButton = false;
+                        let isDisabledButton = true;
+
+                        if (attempt) {
+                            if (attempt.status === 'submitted') {
+                                isResultButton = true;
+                                isDisabledButton = false;
+                                buttonText = 'View Result';
+                                displayStatusText = 'Submitted';
+                                displayStatusColor = '#34c759';
+                            } else if (attempt.status === 'active') {
+                                isLiveButton = true;
+                                isDisabledButton = false;
+                                buttonText = 'Resume Exam';
+                                displayStatusText = 'In Progress';
+                                displayStatusColor = '#ff9500';
+                            } else if (attempt.status === 'expired') {
+                                isResultButton = true;
+                                isDisabledButton = false;
+                                buttonText = 'View Result';
+                                displayStatusText = 'Time Expired';
+                                displayStatusColor = '#999';
+                            }
+                        } else {
+                            // No attempt yet
+                            if (globalStatus === 'active') {
+                                isLiveButton = true;
+                                isDisabledButton = false;
+                                buttonText = 'Start Exam';
+                            } else if (globalStatus === 'not_started') {
+                                buttonText = 'Upcoming';
+                                isDisabledButton = true;
+                            } else {
+                                buttonText = 'Expired';
+                                isDisabledButton = true; // Use gate to show "Missed" state if clicked, but usually just disabled
+                                // Actually, requirement says "If exam is expired: Show Expired"
+                            }
+                        }
 
                         return (
                             <View key={exam.id} style={styles.examCard}>
                                 <View style={styles.examHeader}>
                                     <Text style={styles.examTitle}>{exam.title}</Text>
-                                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(status) }]}>
-                                        <Text style={styles.statusText}>{getStatusText(status)}</Text>
+                                    <View style={[styles.statusBadge, { backgroundColor: displayStatusColor }]}>
+                                        <Text style={styles.statusText}>{displayStatusText}</Text>
                                     </View>
                                 </View>
 
@@ -238,31 +309,28 @@ export default function ExamScreen() {
                                     </View>
                                 </View>
 
-                                {status === 'active' ? (
+                                {isLiveButton ? (
                                     <TouchableOpacity
-                                        style={[styles.startButton, isStarting && styles.buttonDisabled]}
+                                        style={styles.startButton}
                                         onPress={() => handleExamNavigate(exam)}
-                                        disabled={isStarting}
                                     >
-                                        {isStarting ? (
-                                            <ActivityIndicator size="small" color="#fff" />
-                                        ) : (
-                                            <Text style={styles.startButtonText}>
-                                                {isResumable ? 'Resume Exam' : 'Start Exam'}
-                                            </Text>
-                                        )}
+                                        <Text style={styles.startButtonText}>{buttonText}</Text>
                                     </TouchableOpacity>
-                                ) : status === 'expired' ? (
+                                ) : isResultButton ? (
                                     <TouchableOpacity
                                         style={styles.resultButton}
                                         onPress={() => handleExamNavigate(exam)}
                                     >
-                                        <Text style={styles.resultButtonText}>View Result</Text>
+                                        <Text style={styles.resultButtonText}>{buttonText}</Text>
                                     </TouchableOpacity>
                                 ) : (
-                                    <View style={styles.disabledButton}>
-                                        <Text style={styles.disabledButtonText}>Upcoming</Text>
-                                    </View>
+                                    <TouchableOpacity
+                                        style={styles.disabledButton}
+                                        disabled={isDisabledButton}
+                                        onPress={() => !isDisabledButton && handleExamNavigate(exam)}
+                                    >
+                                        <Text style={styles.disabledButtonText}>{buttonText}</Text>
+                                    </TouchableOpacity>
                                 )}
                             </View>
                         );

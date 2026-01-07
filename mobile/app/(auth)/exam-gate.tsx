@@ -12,7 +12,7 @@ import { examSessionManager } from '../../store/examSession';
  */
 export default function ExamGateScreen() {
     const router = useRouter();
-    const { examId } = useLocalSearchParams<{ examId: string }>();
+    const { examId, title } = useLocalSearchParams<{ examId: string, title: string }>();
     const [loading, setLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -46,8 +46,15 @@ export default function ExamGateScreen() {
 
             if (resultRes.success) {
                 // CASE: ALREADY SUBMITTED
-                console.log('✅ Exam already submitted, showing result.');
-                await examSessionManager.clearSession(); // Ensure no active session lingers
+                console.log('✅ Exam already submitted, initializing session for result.');
+
+                // SATISFY ENTRY GUARD: ResultScreen depends on having a submitted session
+                await examSessionManager.setSession({
+                    examId: examId,
+                    attemptId: resultRes.data.attemptId || 'historical',
+                    startedAt: resultRes.data.startedAt || new Date().toISOString(),
+                    durationMinutes: resultRes.data.durationMinutes || 0,
+                }, 'submitted');
 
                 router.replace({
                     pathname: '/(auth)/result',

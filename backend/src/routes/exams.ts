@@ -961,6 +961,9 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
             totalQuestions: totalQuestions.length,
             percentage: Math.round((attemptData.score! / totalQuestions.length) * 100),
             submittedAt: attemptData.submittedAt,
+            attemptId: attemptData.id,
+            startedAt: attemptData.startedAt,
+            durationMinutes: exam[0].durationMinutes,
         });
 
     } catch (error) {

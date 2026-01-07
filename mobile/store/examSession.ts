@@ -38,12 +38,20 @@ export const examSessionManager = {
     },
 
     /**
+     * Set a session with a specific status (active, submitted, or expired)
+     */
+    setSession: async (session: Omit<ExamSession, 'examStatus'>, status: ExamStatus = 'active'): Promise<void> => {
+        activeSession = { ...session, examStatus: status };
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(activeSession));
+        console.log(`🏁 Exam session set to ${status}:`, activeSession.examId);
+    },
+
+    /**
+     * [Deprecated] - Use setSession instead
      * Start a new exam session or initialize one from Gate
      */
     startSession: async (session: Omit<ExamSession, 'examStatus'>): Promise<void> => {
-        activeSession = { ...session, examStatus: 'active' };
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(activeSession));
-        console.log('🏁 Exam session active:', activeSession.examId);
+        await examSessionManager.setSession(session, 'active');
     },
 
     /**
