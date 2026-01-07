@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Animated, BackHandler } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Animated, BackHandler, AppState, AppStateStatus } from 'react-native';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { apiClient } from '../../services/api';
@@ -150,6 +150,44 @@ export default function ExamTakingScreen() {
     const navigation = useNavigation();
 
     const isConfirmedRef = useRef(false);
+    const violationLogRef = useRef<Array<{ type: string; timestamp: string }>>([]);
+    const appState = useRef(AppState.currentState);
+
+    // Anti-Cheating Safeguards
+    useEffect(() => {
+        const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
+                // User minimized or switched app
+                const log = { type: 'APP_BACKGROUND', timestamp: new Date().toISOString() };
+                violationLogRef.current.push(log);
+                console.warn('🚩 Integrity Warning: App moved to background', log);
+            } else if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+                // User returned
+                Alert.alert(
+                    'Integrity Warning',
+                    'Switching apps or minimizing during the exam is recorded. Please focus on your exam to avoid disqualification.',
+                    [{ text: 'I Understand', style: 'cancel' }]
+                );
+            }
+            appState.current = nextAppState;
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+        // Detect Screen Blur (Tab switching)
+        const unsubscribeBlur = navigation.addListener('blur', () => {
+            if (!hasSubmittedRef.current && !isConfirmedRef.current) {
+                const log = { type: 'SCREEN_BLUR', timestamp: new Date().toISOString() };
+                violationLogRef.current.push(log);
+                console.warn('🚩 Integrity Warning: Tab switched or screen lost focus', log);
+            }
+        });
+
+        return () => {
+            subscription.remove();
+            unsubscribeBlur();
+        };
+    }, [navigation]);
 
     // Back Button and Tab Safety
     useEffect(() => {
@@ -424,7 +462,9 @@ export default function ExamTakingScreen() {
             const currentExamId = session?.examId;
             const currentTitle = examData?.title || params.examTitle || 'Exam Result';
 
-            const response = await apiClient.post<any>(`/exams/${currentExamId}/submit`);
+            const response = await apiClient.post<any>(`/exams/${currentExamId}/submit`, {
+                integrityViolations: violationLogRef.current
+            });
             if (response.success && response.data) {
                 // Authority: Mark as submitted in store
                 await examSessionManager.submitSession(new Date().toISOString());
