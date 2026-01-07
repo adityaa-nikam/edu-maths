@@ -124,6 +124,9 @@ class ApiClient {
             if (response.status === 401) {
                 console.warn('🔒 Unauthorized (401) - Token invalid or expired');
 
+                // Clear token immediately to prevent further unauthorized calls
+                this.clearAuthToken();
+
                 // Call unauthorized callback if set
                 if (this.onUnauthorized) {
                     this.onUnauthorized();

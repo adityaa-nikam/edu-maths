@@ -5,12 +5,13 @@
  * Integrates with API client and secure storage.
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import {
     setAuthToken as setApiAuthToken,
     clearAuthToken as clearApiAuthToken,
     setUnauthorizedCallback
 } from '../services/api';
+import { dataCache } from './dataCache';
 import {
     storeAuthToken,
     getAuthToken,
@@ -46,18 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for existing session on app start
     useEffect(() => {
         checkExistingSession();
-
-        // Register global 401 handler
-        // This will automatically logout when API returns 401
-        setUnauthorizedCallback(() => {
-            console.warn('🔒 Auto-logout triggered by 401 response');
-            logout();
-        });
-
-        // Cleanup on unmount
-        return () => {
-            setUnauthorizedCallback(null);
-        };
     }, []);
 
     const checkExistingSession = async () => {
@@ -79,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const login = async (studentData: Student, token: string) => {
+    const login = useCallback(async (studentData: Student, token: string) => {
         try {
             // Store token securely
             await storeAuthToken(token);
@@ -99,9 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('❌ Error during login:', error);
             throw error;
         }
-    };
+    }, []);
 
-    const logout = async () => {
+    const logout = useCallback(async () => {
         try {
             // Clear all stored data
             await clearAllData();
@@ -112,6 +101,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Clear active exam session
             await examSessionManager.clearSession();
 
+            // Clear in-memory cache
+            dataCache.clearAll();
+
             // Update state
             setStudent(null);
             setIsAuthenticated(false);
@@ -121,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('❌ Error during logout:', error);
             throw error;
         }
-    };
+    }, []);
 
     return (
         <AuthContext.Provider value={{ isAuthenticated, student, isLoading, login, logout }}>

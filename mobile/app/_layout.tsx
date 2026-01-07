@@ -12,11 +12,25 @@ function NavigationContent() {
     const router = useRouter();
     const appState = useRef(AppState.currentState);
 
+    const isLoggingOut = useRef(false);
+
     useEffect(() => {
         // Centralized Error Handling
         setUnauthorizedCallback(() => {
-            Alert.alert('Session Expired', 'Please login again.');
-            logout();
+            if (isLoggingOut.current) return;
+            isLoggingOut.current = true;
+
+            Alert.alert(
+                'Session Expired',
+                'Your session has expired. Please login again for security.',
+                [{
+                    text: 'OK', onPress: () => {
+                        logout().finally(() => {
+                            isLoggingOut.current = false;
+                        });
+                    }
+                }]
+            );
         });
 
         setForbiddenCallback(() => {
