@@ -5,11 +5,11 @@
  * Placeholder implementation - will add real features later.
  */
 
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useAuth } from '../../../store/AuthContext';
 
 export default function HomeScreen() {
-    const { student, logout } = useAuth();
+    const { student } = useAuth();
 
     return (
         <ScrollView style={styles.container}>
@@ -54,9 +54,6 @@ export default function HomeScreen() {
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-                    <Text style={styles.logoutButtonText}>Logout</Text>
-                </TouchableOpacity>
             </View>
         </ScrollView>
     );
@@ -125,18 +122,5 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#999',
         fontStyle: 'italic',
-    },
-    logoutButton: {
-        backgroundColor: '#fff',
-        padding: 16,
-        borderRadius: 8,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#ff3b30',
-    },
-    logoutButtonText: {
-        color: '#ff3b30',
-        fontSize: 16,
-        fontWeight: '600',
     },
 });
