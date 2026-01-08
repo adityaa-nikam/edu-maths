@@ -4,7 +4,7 @@ import { db } from '../db';
 import { students, academies, exams, examAttempts } from '../db/schema';
 import { hashPassword, verifyPassword } from '../utils/password';
 import { signStudentToken } from '../utils/jwt';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 
 const router = Router();
 
@@ -230,6 +230,60 @@ router.get('/exam-attempts', authenticateStudent, async (req: Request, res: Resp
         return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to fetch exam attempts',
+        });
+    }
+});
+
+// Protected Route: Get Student Performance (Overall Stats + History)
+router.get('/performance', authenticateStudent, async (req: Request, res: Response) => {
+    try {
+        const studentId = req.studentId!;
+
+        // 1. Fetch Overall Statistics (Attempts + Scores)
+        const allPerformances = await db
+            .select({
+                examId: examAttempts.examId,
+                examTitle: exams.title,
+                difficulty: exams.difficulty,
+                totalQuestions: exams.totalQuestions,
+                score: examAttempts.score,
+                submittedAt: examAttempts.submittedAt,
+            })
+            .from(examAttempts)
+            .innerJoin(exams, eq(examAttempts.examId, exams.id))
+            .where(eq(examAttempts.studentId, studentId))
+            .orderBy(desc(examAttempts.submittedAt));
+
+        // 2. Filter submitted performances
+        const submittedPerformances = allPerformances.filter(p => p.submittedAt !== null);
+
+        // 3. Calculate Stats
+        const totalExamsAttempted = allPerformances.length;
+        const totalExamsSubmitted = submittedPerformances.length;
+        let averageScore = 0;
+        let lastExamScore = null;
+
+        if (submittedPerformances.length > 0) {
+            const totalScore = submittedPerformances.reduce((sum, p) => sum + (p.score || 0), 0);
+            averageScore = Math.round((totalScore / submittedPerformances.length) * 100) / 100;
+            lastExamScore = submittedPerformances[0].score; // Since desc by submittedAt
+        }
+
+        return res.status(200).json({
+            overallStats: {
+                totalExamsAttempted,
+                totalExamsSubmitted,
+                averageScore,
+                lastExamScore,
+            },
+            performances: allPerformances,
+        });
+
+    } catch (error) {
+        console.error('Error fetching student performance:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch performance data',
         });
     }
 });

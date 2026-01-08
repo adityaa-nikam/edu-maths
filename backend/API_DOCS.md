@@ -251,6 +251,42 @@ None required (Public).
 - **404 Not Found**: Academy slug not found.
 - **401 Unauthorized**: Invalid username or password.
 
+---
+
+## GET /api/students/performance
+
+Fetch overall statistics and exam performance history for the authenticated student.
+
+### Authentication
+Requires Student JWT token in Authorization header.
+
+### Success Response (200)
+```json
+{
+  "overallStats": {
+    "totalExamsAttempted": 5,
+    "totalExamsSubmitted": 4,
+    "averageScore": 7.75,
+    "lastExamScore": 8
+  },
+  "performances": [
+    {
+      "examId": "uuid",
+      "examTitle": "Monthly Exam - January",
+      "difficulty": "easy",
+      "totalQuestions": 10,
+      "score": 8,
+      "submittedAt": "2026-01-04T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+### Error Responses
+- **401 Unauthorized**: Missing or invalid student JWT.
+
+---
+
 
 ---
 
