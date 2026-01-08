@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { clerkMiddleware } from '@clerk/express';
 import authRoutes from './routes/auth';
@@ -29,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(clerkMiddleware());
 
 // Health check route
-app.get('/health', (req, res) => {
+app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({
     status: 'ok',
     message: 'Server is running',
