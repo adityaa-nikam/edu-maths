@@ -96,29 +96,29 @@ export default function ResultScreen() {
     // Determine pass/fail (60% is passing)
     const isPassed = percentage >= 60;
 
-    // Get message based on performance
+    // Get message based on performance (Empathetic & Encouraging)
     const getMessage = () => {
-        if (percentage >= 90) return 'Excellent! 🌟';
-        if (percentage >= 80) return 'Great Job! 🎉';
-        if (percentage >= 70) return 'Good Work! 👍';
-        if (percentage >= 60) return 'Passed! ✓';
-        return 'Keep Practicing! 💪';
+        if (percentage >= 95) return 'Absolutely Amazing! 🏆';
+        if (percentage >= 85) return 'Outstanding Effort! 🌟';
+        if (percentage >= 70) return 'Great Progress! 🚀';
+        if (percentage >= 60) return 'Well Done! 👍';
+        return 'Every step counts! 💪';
     };
 
-    // Get color based on performance
+    // Get color based on performance (Softer palette)
     const getScoreColor = () => {
-        if (percentage >= 90) return '#34c759';
-        if (percentage >= 70) return '#ff9500';
-        return '#ff3b30';
+        if (percentage >= 90) return '#10b981'; // Emerald
+        if (percentage >= 60) return '#3b82f6'; // Blue
+        return '#f59e0b'; // Amber (Softer than red)
     };
 
     return (
         <View style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Exam Completed</Text>
+                <Text style={styles.headerTitle}>Review Result</Text>
                 {autoSubmitted && (
-                    <Text style={styles.autoSubmitText}>⏰ Auto-submitted (Time Expired)</Text>
+                    <Text style={styles.autoSubmitText}>⏰ Time completed</Text>
                 )}
             </View>
 
@@ -132,20 +132,20 @@ export default function ResultScreen() {
                     <Text style={[styles.scorePercentage, { color: getScoreColor() }]}>
                         {percentage}%
                     </Text>
-                    <Text style={styles.scoreLabel}>Score</Text>
+                    <Text style={styles.scoreLabel}>Final Score</Text>
+                </View>
+
+                {/* Status Badge */}
+                <View style={[styles.statusBadge, { backgroundColor: getScoreColor() }]}>
+                    <Text style={styles.statusText}>
+                        {isPassed ? '✓ COMPLETED' : 'KEEP PRACTICING 💪'}
+                    </Text>
                 </View>
 
                 {/* Message */}
-                <Text style={[styles.message, { color: getScoreColor() }]}>
+                <Text style={[styles.message, { color: '#333' }]}>
                     {getMessage()}
                 </Text>
-
-                {/* Status Badge */}
-                <View style={[styles.statusBadge, { backgroundColor: isPassed ? '#34c759' : '#ff3b30' }]}>
-                    <Text style={styles.statusText}>
-                        {isPassed ? '✓ PASSED' : '✗ NOT PASSED'}
-                    </Text>
-                </View>
 
                 {/* Details Card */}
                 <View style={styles.detailsCard}>
@@ -160,7 +160,7 @@ export default function ResultScreen() {
                     </View>
                     <View style={styles.divider} />
                     <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Percentage:</Text>
+                        <Text style={styles.detailLabel}>Success Rate:</Text>
                         <Text style={[styles.detailValue, { color: getScoreColor() }]}>
                             {percentage}%
                         </Text>
@@ -171,10 +171,10 @@ export default function ResultScreen() {
                 {!isPassed && (
                     <View style={styles.infoBox}>
                         <Text style={styles.infoText}>
-                            💡 Tip: You need 60% or higher to pass
+                            Don't give up! Reach 60% to master this level.
                         </Text>
                         <Text style={styles.infoText}>
-                            Keep practicing to improve your score!
+                            A little more practice is all you need.
                         </Text>
                     </View>
                 )}
