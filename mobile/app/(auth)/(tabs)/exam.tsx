@@ -223,7 +223,7 @@ export default function ExamScreen() {
 
     const fetchExams = async (isSilent = false) => {
         if (!student?.academySlug) {
-            setError('Academy information not available');
+            setError('We couldn\'t find your academy details. Please contact your coordinator.');
             setLoading(false);
             return;
         }
@@ -254,7 +254,7 @@ export default function ExamScreen() {
                 setExams(sortedExams);
                 dataCache.setExams(sortedExams);
             } else if (!isSilent) {
-                setError(examsRes.error?.message || 'We could not reach the exam server. Please check your data connection.');
+                setError(examsRes.error?.message || 'Something went wrong on our side.');
                 setExams([]);
             }
 
@@ -265,7 +265,7 @@ export default function ExamScreen() {
 
             if (!isSilent) setError(null);
         } catch (err) {
-            if (!isSilent) setError('Connection failed. Please check your internet and try again.');
+            if (!isSilent) setError('Something went wrong on our side. We\'re working on it.');
         } finally {
             if (slowTimer) clearTimeout(slowTimer);
             setLoading(false);
@@ -384,7 +384,7 @@ export default function ExamScreen() {
                     </View>
                 ) : error ? (
                     <View style={styles.centerContainer}>
-                        <Text style={styles.errorText}>❌ {error}</Text>
+                        <Text style={styles.errorText}>{error}</Text>
                         <TouchableOpacity
                             style={styles.retryButton}
                             onPress={() => fetchExams()}

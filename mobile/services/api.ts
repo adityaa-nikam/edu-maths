@@ -29,6 +29,13 @@ export interface ApiResponse<T = any> {
  */
 type UnauthorizedCallback = () => void;
 
+const MSG = {
+    OFFLINE: "You're offline. Please connect to the internet and try again.",
+    SERVER_DOWN: "Our service is temporarily unavailable. Please try again in a few minutes.",
+    BACKEND_ERROR: "Something went wrong on our side. We're working on it.",
+    AUTH_EXPIRED: "Your session has expired. Please log in again.",
+};
+
 /**
  * Base API client class
  */
@@ -80,6 +87,22 @@ class ApiClient {
     }
 
     /**
+     * Distinguish between No Internet and Server Down
+     */
+    private async checkConnectivity(): Promise<'offline' | 'server_down'> {
+        try {
+            // Try to reach a highly reliable server (Google) to check internet
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 3000);
+            await fetch('https://8.8.8.8', { mode: 'no-cors', signal: controller.signal });
+            clearTimeout(id);
+            return 'server_down';
+        } catch (e) {
+            return 'offline';
+        }
+    }
+
+    /**
      * Make HTTP request with timeout
      */
     private async request<T>(
@@ -88,27 +111,22 @@ class ApiClient {
     ): Promise<ApiResponse<T>> {
         const url = `${this.baseUrl}${endpoint}`;
 
-        // Create abort controller for timeout
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
         try {
-            // Build headers
             const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
             };
 
-            // Add custom headers from options
             if (options.headers) {
                 Object.assign(headers, options.headers);
             }
 
-            // Add auth token if available
             if (this.authToken) {
                 headers['Authorization'] = `Bearer ${this.authToken}`;
             }
 
-            // Make request
             const response = await fetch(url, {
                 ...options,
                 headers,
@@ -117,51 +135,43 @@ class ApiClient {
 
             clearTimeout(timeoutId);
 
-            // Parse response
-            const data = await response.json();
+            // Handle responses safely
+            const text = await response.text();
+            let data: any = {};
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch (e) {
+                console.warn('⚠️ Response is not valid JSON');
+            }
 
-            // Handle 401 Unauthorized globally
             if (response.status === 401) {
-                console.warn('🔒 Unauthorized (401) - Token invalid or expired');
-
-                // Clear token immediately to prevent further unauthorized calls
+                console.warn('🔒 Unauthorized (401)');
                 this.clearAuthToken();
-
-                // Call unauthorized callback if set
-                if (this.onUnauthorized) {
-                    this.onUnauthorized();
-                }
+                if (this.onUnauthorized) this.onUnauthorized();
 
                 return {
                     success: false,
                     error: {
-                        error: 'Unauthorized',
-                        message: data.message || 'Session expired. Please login again.',
+                        error: 'Auth Expired',
+                        message: MSG.AUTH_EXPIRED,
                         statusCode: 401,
                     },
                 };
             }
 
-            // Handle other error responses
             if (!response.ok) {
-                let errorMessage = data.message || 'An error occurred';
+                let errorMessage = MSG.BACKEND_ERROR;
 
-                // Refine generic messages based on status codes
                 if (response.status === 403) {
-                    errorMessage = data.message || 'You do not have permission to perform this action.';
-                    if (this.onForbidden) {
-                        this.onForbidden();
-                    }
-                } else if (response.status === 404) {
-                    errorMessage = data.message || 'The requested resource was not found.';
+                    if (this.onForbidden) this.onForbidden();
                 } else if (response.status >= 500) {
-                    errorMessage = 'Server error. Please try again later.';
+                    errorMessage = MSG.SERVER_DOWN;
                 }
 
                 return {
                     success: false,
                     error: {
-                        error: data.error || 'Request failed',
+                        error: 'Backend Error',
                         message: errorMessage,
                         statusCode: response.status,
                     },
@@ -175,23 +185,25 @@ class ApiClient {
         } catch (error: any) {
             clearTimeout(timeoutId);
 
-            // Handle timeout
             if (error.name === 'AbortError') {
                 return {
                     success: false,
                     error: {
-                        error: 'Timeout',
-                        message: 'Request timed out. Please check your connection.',
+                        error: 'Server Down',
+                        message: MSG.SERVER_DOWN,
+                        statusCode: 504,
                     },
                 };
             }
 
-            // Handle network errors
+            // Detect if offline or server down
+            const connectionType = await this.checkConnectivity();
+
             return {
                 success: false,
                 error: {
-                    error: 'Network Error',
-                    message: error.message || 'Unable to connect to server',
+                    error: connectionType === 'offline' ? 'No Internet' : 'Server Down',
+                    message: connectionType === 'offline' ? MSG.OFFLINE : MSG.SERVER_DOWN,
                 },
             };
         }

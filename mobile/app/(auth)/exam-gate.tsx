@@ -35,7 +35,7 @@ export default function ExamGateScreen() {
             const statusRes = await apiClient.get<any>(`/exams/${examId}/status`);
 
             if (!statusRes.success) {
-                setErrorMsg(statusRes.error?.message || 'Unable to connect to exam server');
+                setErrorMsg(statusRes.error?.message || 'Something went wrong on our side.');
                 setLoading(false);
                 return;
             }
@@ -138,11 +138,11 @@ export default function ExamGateScreen() {
                             }
                         });
                     } else {
-                        setErrorMsg(startRes.error?.message || 'Failed to initialize exam session');
+                        setErrorMsg(startRes.error?.message || 'Something went wrong on our side.');
                         setLoading(false);
                     }
                 } else {
-                    setErrorMsg(questionsRes.error?.message || 'Error validating exam session');
+                    setErrorMsg(questionsRes.error?.message || 'Something went wrong on our side.');
                     setLoading(false);
                 }
                 return;
@@ -150,7 +150,7 @@ export default function ExamGateScreen() {
 
         } catch (err) {
             console.error('Flow Controller Error:', err);
-            setErrorMsg('A critical error occurred while preparing your session');
+            setErrorMsg('Something went wrong on our side. We\'re working on it.');
             setLoading(false);
         }
     };

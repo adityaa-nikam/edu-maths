@@ -314,10 +314,10 @@ export default function ExamTakingScreen() {
 
                 setEndTime(computedEndTime);
             } else {
-                setError(response.error?.message || 'We could not load your questions. Please check your data connection.');
+                setError(response.error?.message || 'Something went wrong on our side.');
             }
         } catch (err) {
-            setError('Unable to load exam questions. Please check your connection and try again.');
+            setError('Something went wrong on our side. We\'re working on it.');
         } finally {
             clearTimeout(slowTimer);
             setLoading(false);
@@ -491,16 +491,15 @@ export default function ExamTakingScreen() {
                     });
                 }, 1.5 * 1000);
             } else {
-                const isNetworkError = response.error?.error === 'Network Error' || response.error?.error === 'Timeout';
                 Alert.alert(
-                    isNetworkError ? 'Connection Error' : 'Submission Failed',
-                    response.error?.message || 'Failed to submit exam'
+                    'Unable to Submit',
+                    response.error?.message || 'Something went wrong on our side. We\'re working on it.'
                 );
                 hasSubmittedRef.current = false;
                 setSubmitting(false);
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to submit exam. Please check your connection and try again.');
+            Alert.alert('Unable to Submit', 'Something went wrong on our side. Please check your connection and try again.');
             hasSubmittedRef.current = false;
             setSubmitting(false);
         }
@@ -512,7 +511,7 @@ export default function ExamTakingScreen() {
     if (!examData) {
         return (
             <View style={styles.centerContainer}>
-                <Text style={styles.errorText}>Failed to load exam data</Text>
+                <Text style={styles.errorText}>We couldn't load the exam content</Text>
                 <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
                     <Text style={styles.retryButtonText}>Go Back</Text>
                 </TouchableOpacity>
@@ -541,7 +540,7 @@ export default function ExamTakingScreen() {
             {isOffline && (
                 <View style={styles.offlineBanner}>
                     <Text style={styles.offlineText}>
-                        {syncStatus === 'syncing' ? '🔄 Syncing answers...' : '⚠️ Connection lost. Syncing answers in background...'}
+                        {syncStatus === 'syncing' ? '🔄 Syncing answers...' : 'You\'re offline. We\'ll sync your answers when you\'re back.'}
                     </Text>
                     {syncStatus === 'syncing' && <ActivityIndicator size="small" color="#fff" style={{ marginLeft: 8 }} />}
                 </View>
