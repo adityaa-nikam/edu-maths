@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "unique_submission_idx" ON "exam_attempts" USING btree ("student_id","exam_id") WHERE "exam_attempts"."submitted_at" IS NOT NULL;
