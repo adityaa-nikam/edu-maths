@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { authenticateTeacher, authenticateStudent } from '../middlewares';
-import { db } from '../db';
-import { students, academies, exams, examAttempts } from '../db/schema';
-import { hashPassword, verifyPassword } from '../utils/password';
-import { signStudentToken } from '../utils/jwt';
+import { authenticateTeacher, authenticateStudent } from '../middlewares/index.js';
+import { db } from '../db/index.js';
+import { students, academies, exams, examAttempts } from '../db/schema/index.js';
+import { hashPassword, verifyPassword } from '../utils/password.js';
+import { signStudentToken } from '../utils/jwt.js';
 import { eq, and, desc } from 'drizzle-orm';
 
 const router = Router();

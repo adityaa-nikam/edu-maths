@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { authenticateTeacher } from '../middlewares';
-import { db } from '../db';
-import { exams, academies, examAttempts, students } from '../db/schema';
+import { authenticateTeacher } from '../middlewares/index.js';
+import { db } from '../db/index.js';
+import { exams, academies, examAttempts, students } from '../db/schema/index.js';
 import { eq, and, desc, asc } from 'drizzle-orm';
 
 const router = Router();

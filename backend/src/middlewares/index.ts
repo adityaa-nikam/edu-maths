@@ -1,1 +1,1 @@
-export { authenticateTeacher, authenticateStudent, requireAcademyAccess } from './auth';
+export { authenticateTeacher, authenticateStudent, requireAcademyAccess } from './auth.js';

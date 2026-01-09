@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { authenticateTeacher, authenticateStudent } from '../middlewares';
-import { db } from '../db';
-import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema';
+import { authenticateTeacher, authenticateStudent } from '../middlewares/index.js';
+import { db } from '../db/index.js';
+import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
 import { eq, and, inArray } from 'drizzle-orm';
-import { fetchRandomQuestions } from '../services/questions';
+import { fetchRandomQuestions } from '../services/questions.js';
 
 const router = Router();
 

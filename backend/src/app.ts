@@ -1,11 +1,11 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { clerkMiddleware } from '@clerk/express';
-import authRoutes from './routes/auth';
-import academyRoutes from './routes/academy';
-import studentRoutes from './routes/students';
-import examRoutes from './routes/exams';
-import teacherRoutes from './routes/teacher';
+import authRoutes from './routes/auth.js';
+import academyRoutes from './routes/academy.js';
+import studentRoutes from './routes/students.js';
+import examRoutes from './routes/exams.js';
+import teacherRoutes from './routes/teacher.js';
 
 const app = express();
 
