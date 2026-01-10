@@ -9,10 +9,23 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://edu-maths.onrender.com/api",
+        "EXPO_PUBLIC_API_TIMEOUT": "30000",
+        "EXPO_PUBLIC_ENV": "production"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://edu-maths.onrender.com/api",
+        "EXPO_PUBLIC_API_TIMEOUT": "30000",
+        "EXPO_PUBLIC_ENV": "production"
+      }
     }
   },
   "submit": {
