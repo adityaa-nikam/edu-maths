@@ -1668,3 +1668,102 @@ No request body required.
 - Track exam engagement
 - Identify exams needing review
 
+---
+
+## GET /api/teacher/academy/students
+
+Fetch all students enrolled in teacher's academy.
+
+### Authentication
+Requires Clerk teacher JWT token in Authorization header.
+
+### URL Parameters
+None
+
+### Request Body
+No request body required.
+
+### Success Response (200)
+```json
+{
+  "academyId": "uuid",
+  "academyName": "ABC Abacus Academy",
+  "totalStudents": 25,
+  "students": [
+    {
+      "id": "uuid-1",
+      "username": "student1",
+      "createdAt": "2026-01-01T10:00:00.000Z"
+    },
+    {
+      "id": "uuid-2",
+      "username": "student2",
+      "createdAt": "2026-01-02T11:30:00.000Z"
+    },
+    {
+      "id": "uuid-3",
+      "username": "student3",
+      "createdAt": "2026-01-03T09:15:00.000Z"
+    }
+  ]
+}
+```
+
+### Error Responses
+
+#### 401 - Unauthorized
+```json
+{
+  "error": "Unauthorized",
+  "message": "Authentication failed"
+}
+```
+
+#### 404 - Not Found
+```json
+{
+  "error": "Not Found",
+  "message": "No academy found for this teacher"
+}
+```
+
+#### 500 - Internal Server Error
+```json
+{
+  "error": "Internal Server Error",
+  "message": "Failed to fetch academy students"
+}
+```
+
+### Business Rules
+- ✅ Teacher must be authenticated via Clerk
+- ✅ Teacher must have an academy
+- ✅ Returns all students enrolled in the academy
+- ✅ Students ordered by creation date (most recent first)
+- ✅ Read-only endpoint (no modifications)
+
+### Notes
+- This endpoint returns all students belonging to the teacher's academy.
+- Students are ordered by creation date in descending order (newest first).
+- Password hashes are never exposed in the response.
+- The teacher can only view students from their own academy.
+- Useful for displaying student lists and managing academy enrollment.
+
+### Response Fields
+- `academyId` - ID of the teacher's academy
+- `academyName` - Name of the academy
+- `totalStudents` - Total count of students in the academy
+- `students` - Array of student objects
+  - `id` - ID of the student
+  - `username` - Username of the student
+  - `createdAt` - Timestamp when student was created (UTC)
+
+### Use Cases
+- Display list of all students in academy
+- Student management dashboard
+- Monitor academy enrollment
+- Export student list
+- Link to individual student performance pages
+- Track student registration timeline
+
+---

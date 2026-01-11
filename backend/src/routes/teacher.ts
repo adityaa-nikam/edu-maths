@@ -398,4 +398,53 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
     }
 });
 
+// Get all students for teacher's academy
+router.get('/academy/students', authenticateTeacher, async (req: Request, res: Response) => {
+    try {
+        const clerkUserId = req.clerkUserId!;
+
+        // 1. Get Teacher's Academy
+        const academy = await db
+            .select()
+            .from(academies)
+            .where(eq(academies.clerkUserId, clerkUserId))
+            .limit(1);
+
+        if (academy.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'No academy found for this teacher',
+            });
+        }
+
+        const teacherAcademy = academy[0];
+
+        // 2. Fetch All Students for Academy
+        const allStudents = await db
+            .select({
+                id: students.id,
+                username: students.username,
+                createdAt: students.createdAt,
+            })
+            .from(students)
+            .where(eq(students.academyId, teacherAcademy.id))
+            .orderBy(desc(students.createdAt));
+
+        // 3. Return Results
+        return res.status(200).json({
+            academyId: teacherAcademy.id,
+            academyName: teacherAcademy.name,
+            totalStudents: allStudents.length,
+            students: allStudents,
+        });
+
+    } catch (error) {
+        console.error('Error fetching academy students:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch academy students',
+        });
+    }
+});
+
 export default router;
