@@ -40,6 +40,8 @@ const TeacherSignup = () => {
             routing="path"
             path="/signup"
             signInUrl="/login"
+            afterSignUpUrl="/create-academy"
+            redirectUrl="/create-academy"
             appearance={{
               elements: {
                 rootBox: {
