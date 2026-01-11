@@ -6,16 +6,19 @@ import { useAuth } from '../../contexts/AuthContext';
 const TeacherSignup = () => {
   const navigate = useNavigate();
   const { isSignedIn } = useUser();
-  const { hasAcademy, academy } = useAuth();
+  const { hasAcademy, academy, loading } = useAuth();
 
-  // Redirect logged-in teachers
+  // Redirect logged-in teachers to their dashboard
   useEffect(() => {
+    // Wait for auth to finish loading before redirecting
+    if (loading) return;
+    
     if (isSignedIn && hasAcademy() && academy) {
       navigate(`/${academy.slug}/dashboard`, { replace: true });
     } else if (isSignedIn && !hasAcademy()) {
       navigate('/create-academy', { replace: true });
     }
-  }, [isSignedIn, hasAcademy, academy, navigate]);
+  }, [isSignedIn, hasAcademy, academy, navigate, loading]);
 
   return (
     <div className="page-container">
@@ -37,7 +40,6 @@ const TeacherSignup = () => {
             routing="path"
             path="/signup"
             signInUrl="/login"
-            afterSignUpUrl="/create-academy"
             appearance={{
               elements: {
                 rootBox: {

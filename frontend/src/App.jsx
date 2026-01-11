@@ -30,7 +30,9 @@ function App() {
 
         {/* Teacher auth */}
         <Route path="/login" element={<TeacherLogin />} />
+        <Route path="/login/*" element={<TeacherLogin />} />
         <Route path="/signup" element={<TeacherSignup />} />
+        <Route path="/signup/*" element={<TeacherSignup />} />
         
         {/* Academy creation - Protected teacher route */}
         <Route 
