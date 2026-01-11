@@ -1,0 +1,240 @@
+/* Dashboard Layout Styles */
+
+/* Layout Container */
+.dashboard-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: var(--bg-secondary);
+}
+
+/* Header */
+.dashboard-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: white;
+    border-bottom: 1px solid var(--neutral-200);
+    box-shadow: var(--shadow-sm);
+}
+
+.dashboard-header-container {
+    max-width: 100%;
+    padding: 0 var(--spacing-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 4rem;
+}
+
+/* Logo */
+.dashboard-logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-purple);
+    text-decoration: none;
+    transition: transform var(--transition-fast);
+}
+
+.dashboard-logo:hover {
+    transform: scale(1.05);
+}
+
+/* Mobile Toggle */
+.dashboard-mobile-toggle {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0.5rem;
+    transition: color var(--transition-fast);
+}
+
+.dashboard-mobile-toggle:hover {
+    color: var(--primary-purple);
+}
+
+/* User Info */
+.dashboard-user-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.dashboard-academy-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: capitalize;
+    display: none;
+}
+
+.dashboard-user-avatar {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-purple), var(--accent-pink));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+}
+
+.dashboard-user-avatar:hover {
+    transform: scale(1.1);
+}
+
+/* Main Layout */
+.dashboard-main {
+    display: flex;
+    flex: 1;
+    position: relative;
+}
+
+/* Sidebar */
+.dashboard-sidebar {
+    width: 260px;
+    background: white;
+    border-right: 1px solid var(--neutral-200);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transition: transform var(--transition-base);
+}
+
+.dashboard-nav {
+    flex: 1;
+    padding: var(--spacing-lg) 0;
+    overflow-y: auto;
+}
+
+/* Navigation Items */
+.dashboard-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: 0.875rem var(--spacing-lg);
+    margin: 0.25rem var(--spacing-md);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+    position: relative;
+}
+
+.dashboard-nav-item:hover {
+    background: var(--neutral-50);
+    color: var(--primary-purple);
+}
+
+.dashboard-nav-item--active {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(236, 72, 153, 0.1));
+    color: var(--primary-purple);
+    font-weight: 600;
+}
+
+.dashboard-nav-item--active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(135deg, var(--primary-purple), var(--accent-pink));
+    border-radius: 0 2px 2px 0;
+}
+
+.dashboard-nav-icon {
+    font-size: 1.25rem;
+    min-width: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dashboard-nav-label {
+    flex: 1;
+}
+
+/* Sidebar Footer */
+.dashboard-sidebar-footer {
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--neutral-200);
+}
+
+.dashboard-logout-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: 0.875rem var(--spacing-md);
+    color: var(--error);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.dashboard-logout-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* Content Area */
+.dashboard-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: calc(100vh - 4rem - 200px);
+}
+
+/* Mobile Overlay */
+.dashboard-overlay {
+    display: none;
+}
+
+/* Responsive Design */
+@media (min-width: 769px) {
+    .dashboard-academy-name {
+        display: block;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-mobile-toggle {
+        display: block;
+    }
+
+    .dashboard-sidebar {
+        position: fixed;
+        top: 4rem;
+        left: 0;
+        bottom: 0;
+        z-index: 200;
+        transform: translateX(-100%);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .dashboard-sidebar--open {
+        transform: translateX(0);
+    }
+
+    .dashboard-overlay {
+        display: block;
+        position: fixed;
+        top: 4rem;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 150;
+    }
+
+    .dashboard-content {
+        width: 100%;
+    }
+}
