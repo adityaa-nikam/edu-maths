@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { authenticateTeacher } from '../middlewares/index.js';
 import { db } from '../db/index.js';
-import { exams, academies, examAttempts, students } from '../db/schema/index.js';
-import { eq, and, desc, asc } from 'drizzle-orm';
+import { exams, academies, examAttempts, students, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
+import { eq, and, desc, asc, inArray } from 'drizzle-orm';
 
 const router = Router();
 
@@ -443,6 +443,157 @@ router.get('/academy/students', authenticateTeacher, async (req: Request, res: R
         return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to fetch academy students',
+        });
+    }
+});
+
+// Get detailed exam results for a specific student (question-by-question)
+router.get('/exams/:examId/student/:studentId', authenticateTeacher, async (req: Request, res: Response) => {
+    try {
+        const { examId, studentId } = req.params;
+        const clerkUserId = req.clerkUserId!;
+
+        // 1. Verify Exam Exists and Belongs to Teacher's Academy
+        const exam = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.id, examId))
+            .limit(1);
+
+        if (exam.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Exam not found',
+            });
+        }
+
+        const targetExam = exam[0];
+
+        const academy = await db
+            .select()
+            .from(academies)
+            .where(and(
+                eq(academies.id, targetExam.academyId),
+                eq(academies.clerkUserId, clerkUserId)
+            ))
+            .limit(1);
+
+        if (academy.length === 0) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You are not authorized to view this exam',
+            });
+        }
+
+        // 2. Verify Student Belongs to Academy
+        const student = await db
+            .select()
+            .from(students)
+            .where(and(
+                eq(students.id, studentId),
+                eq(students.academyId, targetExam.academyId)
+            ))
+            .limit(1);
+
+        if (student.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Student not found in this academy',
+            });
+        }
+
+        const targetStudent = student[0];
+
+        // 3. Get Student's Attempt
+        const attempt = await db
+            .select()
+            .from(examAttempts)
+            .where(and(
+                eq(examAttempts.examId, examId),
+                eq(examAttempts.studentId, studentId)
+            ))
+            .limit(1);
+
+        if (attempt.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Student has not attempted this exam',
+            });
+        }
+
+        const studentAttempt = attempt[0];
+
+        // 4. Get All Answers for This Attempt
+        const answers = await db
+            .select()
+            .from(examAnswers)
+            .where(eq(examAnswers.attemptId, studentAttempt.id));
+
+        if (answers.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'No answers found for this attempt',
+            });
+        }
+
+        // 5. Get Question Details Based on Difficulty
+        let questionsTable;
+        if (targetExam.difficulty === 'easy') {
+            questionsTable = questionsEasy;
+        } else if (targetExam.difficulty === 'medium') {
+            questionsTable = questionsMedium;
+        } else {
+            questionsTable = questionsHard;
+        }
+
+        // Extract question IDs
+        const questionIds = answers.map(a => a.questionId);
+
+        // Fetch question details
+        const questionDetails = await db
+            .select()
+            .from(questionsTable)
+            .where(inArray(questionsTable.id, questionIds));
+
+        // 6. Combine Answers with Question Details
+        const questionsWithAnswers = answers.map(answer => {
+            const question = questionDetails.find(q => q.id === answer.questionId);
+            return {
+                questionId: answer.questionId,
+                question: question?.question || 'Question not found',
+                options: question?.options || [],
+                correctAnswer: question?.correctOption || 0,
+                selectedOption: answer.selectedOption,
+                isCorrect: answer.isCorrect,
+            };
+        });
+
+        // 7. Return Results
+        return res.status(200).json({
+            student: {
+                id: targetStudent.id,
+                username: targetStudent.username,
+            },
+            exam: {
+                id: targetExam.id,
+                title: targetExam.title,
+                difficulty: targetExam.difficulty,
+                totalQuestions: targetExam.totalQuestions,
+            },
+            attempt: {
+                id: studentAttempt.id,
+                startedAt: studentAttempt.startedAt,
+                submittedAt: studentAttempt.submittedAt,
+                score: studentAttempt.score,
+            },
+            questions: questionsWithAnswers,
+        });
+
+    } catch (error) {
+        console.error('Error fetching student exam details:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch student exam details',
         });
     }
 });

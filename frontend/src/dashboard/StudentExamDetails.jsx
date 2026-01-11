@@ -287,8 +287,8 @@ const StudentExamDetails = () => {
                             {/* Options */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
                                 {q.options.map((option, optIndex) => {
-                                    const isSelected = q.studentAnswer === optIndex;
-                                    const isCorrect = q.correctOption === optIndex;
+                                    const isSelected = q.selectedOption === optIndex;
+                                    const isCorrect = q.correctAnswer === optIndex;
 
                                     let borderColor = 'var(--neutral-200)';
                                     let backgroundColor = 'white';
