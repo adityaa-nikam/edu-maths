@@ -12,6 +12,7 @@ import TeacherExamMonitoring from './dashboard/TeacherExamMonitoring.jsx';
 import StudentExamDetails from './dashboard/StudentExamDetails.jsx';
 import StudentsList from './dashboard/StudentsList.jsx';
 import StudentsPerformance from './dashboard/StudentsPerformance.jsx';
+import StudentPerformanceDetails from './dashboard/StudentPerformanceDetails.jsx';
 import CreateExam from './dashboard/CreateExam.jsx';
 import ExamPage from './exam/ExamPage.jsx';
 import NotFound from './common/NotFound/NotFound.jsx';
@@ -95,6 +96,14 @@ function App() {
           element={
             <ProtectedRoute type="teacher" requireAcademy>
               <StudentsList />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/:academySlug/students/:studentId" 
+          element={
+            <ProtectedRoute type="teacher" requireAcademy>
+              <StudentPerformanceDetails />
             </ProtectedRoute>
           } 
         />

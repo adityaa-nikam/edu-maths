@@ -270,9 +270,11 @@ const StudentsList = () => {
                                     {students.map((student, index) => (
                                         <tr
                                             key={student.id}
+                                            onClick={() => navigate(`/${academySlug}/students/${student.id}`)}
                                             style={{
                                                 borderBottom: '1px solid var(--neutral-200)',
                                                 transition: 'background-color 0.2s',
+                                                cursor: 'pointer'
                                             }}
                                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
                                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}

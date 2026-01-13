@@ -5,7 +5,8 @@ import Footer from '../../common/Footer/Footer';
 import './DashboardLayout.css';
 
 const DashboardLayout = ({ children }) => {
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile only
+    const [isCollapsed, setIsCollapsed] = useState(false); // Desktop collapse
     const location = useLocation();
     const { academySlug } = useParams();
     const navigate = useNavigate();
@@ -13,6 +14,10 @@ const DashboardLayout = ({ children }) => {
 
     const toggleSidebar = () => {
         setIsSidebarOpen(!isSidebarOpen);
+    };
+
+    const toggleCollapse = () => {
+        setIsCollapsed(!isCollapsed);
     };
 
     // Handle logout
@@ -64,13 +69,26 @@ const DashboardLayout = ({ children }) => {
             {/* Top Header */}
             <header className="dashboard-header">
                 <div className="dashboard-header-container">
+                    {/* Desktop Collapse Toggle */}
+                    <button
+                        className={`dashboard-collapse-toggle ${isCollapsed ? 'active' : ''}`}
+                        onClick={toggleCollapse}
+                        aria-label="Toggle sidebar"
+                    >
+                        <span className="hamburger-line"></span>
+                        <span className="hamburger-line"></span>
+                        <span className="hamburger-line"></span>
+                    </button>
+
                     {/* Mobile Menu Toggle */}
                     <button
-                        className="dashboard-mobile-toggle"
+                        className={`dashboard-mobile-toggle ${isSidebarOpen ? 'active' : ''}`}
                         onClick={toggleSidebar}
                         aria-label="Toggle sidebar"
                     >
-                        ☰
+                        <span className="hamburger-line"></span>
+                        <span className="hamburger-line"></span>
+                        <span className="hamburger-line"></span>
                     </button>
 
                     {/* Logo */}
@@ -90,7 +108,13 @@ const DashboardLayout = ({ children }) => {
 
             <div className="dashboard-main">
                 {/* Sidebar */}
-                <aside className={`dashboard-sidebar ${isSidebarOpen ? 'dashboard-sidebar--open' : ''}`}>
+                <aside className={`dashboard-sidebar ${isSidebarOpen ? 'dashboard-sidebar--open' : ''} ${isCollapsed ? 'dashboard-sidebar--collapsed' : ''}`}>
+                    {/* Sidebar Logo */}
+                    <div className="dashboard-sidebar-logo">
+                        <span className="dashboard-sidebar-logo-icon">📚</span>
+                        {!isCollapsed && <span className="dashboard-sidebar-logo-text">EduMaths</span>}
+                    </div>
+
                     <nav className="dashboard-nav">
                         {navItems.map((item) => (
                             <Link
@@ -98,9 +122,10 @@ const DashboardLayout = ({ children }) => {
                                 to={item.path}
                                 className={`dashboard-nav-item ${isActive(item.path) ? 'dashboard-nav-item--active' : ''}`}
                                 onClick={() => setIsSidebarOpen(false)}
+                                title={isCollapsed ? item.label : ''}
                             >
                                 <span className="dashboard-nav-icon">{item.icon}</span>
-                                <span className="dashboard-nav-label">{item.label}</span>
+                                {!isCollapsed && <span className="dashboard-nav-label">{item.label}</span>}
                             </Link>
                         ))}
                     </nav>
@@ -110,6 +135,7 @@ const DashboardLayout = ({ children }) => {
                         <button 
                             onClick={handleLogout} 
                             className="dashboard-logout-btn"
+                            title={isCollapsed ? 'Logout' : ''}
                             style={{ 
                                 background: 'none',
                                 border: 'none',
@@ -120,7 +146,7 @@ const DashboardLayout = ({ children }) => {
                             }}
                         >
                             <span className="dashboard-nav-icon">🚪</span>
-                            <span className="dashboard-nav-label">Logout</span>
+                            {!isCollapsed && <span className="dashboard-nav-label">Logout</span>}
                         </button>
                     </div>
                 </aside>
@@ -136,10 +162,9 @@ const DashboardLayout = ({ children }) => {
                 {/* Main Content */}
                 <main className="dashboard-content">
                     {children}
+                    <Footer />
                 </main>
             </div>
-
-            <Footer />
         </div>
     );
 };
