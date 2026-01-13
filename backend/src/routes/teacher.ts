@@ -598,4 +598,86 @@ router.get('/exams/:examId/student/:studentId', authenticateTeacher, async (req:
     }
 });
 
+// Get all students performance summary for teacher's academy
+router.get('/academy/:academyId/students-performance', authenticateTeacher, async (req: Request, res: Response) => {
+    try {
+        const { academyId } = req.params;
+        const clerkUserId = req.clerkUserId!;
+
+        // 1. Verify academy ownership
+        const academy = await db
+            .select()
+            .from(academies)
+            .where(and(
+                eq(academies.id, academyId),
+                eq(academies.clerkUserId, clerkUserId)
+            ))
+            .limit(1);
+
+        if (academy.length === 0) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You do not own this academy',
+            });
+        }
+
+        // 2. Get all students in this academy with their stats
+        const studentsInAcademy = await db
+            .select({
+                studentId: students.id,
+                username: students.username,
+                createdAt: students.createdAt,
+            })
+            .from(students)
+            .where(eq(students.academyId, academyId));
+
+        // 3. For each student, calculate their stats
+        const studentsWithStats = await Promise.all(
+            studentsInAcademy.map(async (student) => {
+                const performances = await db
+                    .select({
+                        score: examAttempts.score,
+                        submittedAt: examAttempts.submittedAt,
+                    })
+                    .from(examAttempts)
+                    .where(eq(examAttempts.studentId, student.studentId));
+
+                const submitted = performances.filter(p => p.submittedAt !== null);
+                const totalAttempted = performances.length;
+                const totalSubmitted = submitted.length;
+                let avgScore = 0;
+
+                if (submitted.length > 0) {
+                    const total = submitted.reduce((sum, p) => sum + (p.score || 0), 0);
+                    avgScore = Math.round((total / submitted.length) * 100) / 100;
+                }
+
+                return {
+                    studentId: student.studentId,
+                    username: student.username,
+                    joinedAt: student.createdAt,
+                    totalExamsAttempted: totalAttempted,
+                    totalExamsSubmitted: totalSubmitted,
+                    averageScore: avgScore,
+                };
+            })
+        );
+
+        return res.status(200).json({
+            academy: {
+                id: academy[0].id,
+                name: academy[0].name,
+            },
+            students: studentsWithStats,
+        });
+
+    } catch (error) {
+        console.error('Error fetching students performance:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch students performance',
+        });
+    }
+});
+
 export default router;
