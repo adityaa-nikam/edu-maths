@@ -197,6 +197,14 @@ export const teacherAPI = {
   // Get all students for teacher's academy
   getAcademyStudents: () => api.get('/api/teacher/academy/students'),
 
+  // Create a new student
+  createStudent: (academyId, username, password) => 
+    api.post('/api/students/create', { academyId, username, password }),
+
+  // Get all students performance summary for academy
+  getAcademyStudentsPerformance: (academyId) => 
+    api.get(`/api/teacher/academy/${academyId}/students-performance`),
+
   // Get exam summary with stats
   getExamSummary: (examId) => api.get(`/api/teacher/exams/${examId}/summary`),
 

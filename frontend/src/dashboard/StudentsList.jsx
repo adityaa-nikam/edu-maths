@@ -13,6 +13,11 @@ const StudentsList = () => {
     const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [formData, setFormData] = useState({ username: '', password: '' });
+    const [formError, setFormError] = useState('');
+    const [formLoading, setFormLoading] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -53,6 +58,56 @@ const StudentsList = () => {
             hour: '2-digit',
             minute: '2-digit'
         });
+    };
+
+    // Handle add student form submission
+    const handleAddStudent = async (e) => {
+        e.preventDefault();
+        
+        // Validation
+        if (!formData.username.trim()) {
+            setFormError('Username is required');
+            return;
+        }
+        if (formData.password.length < 6) {
+            setFormError('Password must be at least 6 characters');
+            return;
+        }
+        if (!academy?.id) {
+            setFormError('Academy information not found');
+            return;
+        }
+
+        try {
+            setFormLoading(true);
+            setFormError('');
+
+            await teacherAPI.createStudent(academy.id, formData.username, formData.password);
+            
+            // Success - refresh students list
+            const response = await teacherAPI.getAcademyStudents();
+            setStudents(response.students || []);
+            
+            // Show success message
+            setSuccessMessage(`Student "${formData.username}" added successfully!`);
+            setTimeout(() => setSuccessMessage(''), 3000);
+            
+            // Reset form and close modal
+            setFormData({ username: '', password: '' });
+            setShowAddModal(false);
+        } catch (err) {
+            console.error('Error creating student:', err);
+            setFormError(err.response?.data?.message || err.message || 'Failed to create student');
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
+    // Handle modal close
+    const handleCloseModal = () => {
+        setShowAddModal(false);
+        setFormData({ username: '', password: '' });
+        setFormError('');
     };
 
     if (loading) {
@@ -111,18 +166,42 @@ const StudentsList = () => {
                             </div>
                         </div>
 
-                        <button
-                            onClick={() => navigate(`/${academySlug}/dashboard`)}
-                            className="btn btn-outline"
-                        >
-                            ← Back to Dashboard
-                        </button>
+                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                            <button
+                                onClick={() => setShowAddModal(true)}
+                                className="btn btn-primary"
+                            >
+                                + Add Student
+                            </button>
+                            <button
+                                onClick={() => navigate(`/${academySlug}/dashboard`)}
+                                className="btn btn-outline"
+                            >
+                                ← Back to Dashboard
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div className="container container--lg">
                 {error && <ErrorAlert message={error} />}
+                {successMessage && (
+                    <div style={{
+                        padding: 'var(--spacing-md)',
+                        backgroundColor: 'var(--success-light)',
+                        border: '1px solid var(--success)',
+                        borderRadius: 'var(--radius-md)',
+                        color: 'var(--success-dark)',
+                        marginBottom: 'var(--spacing-md)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--spacing-sm)'
+                    }}>
+                        <span>✅</span>
+                        <span>{successMessage}</span>
+                    </div>
+                )}
 
                 {/* Students List */}
                 {students.length === 0 ? (
@@ -251,6 +330,174 @@ const StudentsList = () => {
                     </div>
                 )}
             </div>
+
+            {/* Add Student Modal */}
+            {showAddModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000,
+                    padding: 'var(--spacing-md)'
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: 'var(--radius-lg)',
+                        maxWidth: '500px',
+                        width: '100%',
+                        maxHeight: '90vh',
+                        overflow: 'auto',
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+                    }}>
+                        {/* Modal Header */}
+                        <div style={{
+                            padding: 'var(--spacing-xl)',
+                            borderBottom: '1px solid var(--neutral-200)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <h2 style={{
+                                    fontSize: '1.5rem',
+                                    fontWeight: '700',
+                                    color: 'var(--text-primary)',
+                                    margin: 0
+                                }}>
+                                    Add New Student
+                                </h2>
+                                <button
+                                    onClick={handleCloseModal}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        fontSize: '1.5rem',
+                                        cursor: 'pointer',
+                                        color: 'var(--text-secondary)',
+                                        padding: '0',
+                                        lineHeight: 1
+                                    }}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                            <p style={{
+                                fontSize: '0.875rem',
+                                color: 'var(--text-secondary)',
+                                marginTop: 'var(--spacing-sm)',
+                                marginBottom: 0
+                            }}>
+                                Create a new student account for {academy?.name || 'your academy'}
+                            </p>
+                        </div>
+
+                        {/* Modal Body */}
+                        <form onSubmit={handleAddStudent} style={{ padding: 'var(--spacing-xl)' }}>
+                            {formError && (
+                                <div style={{
+                                    padding: 'var(--spacing-md)',
+                                    backgroundColor: 'var(--error-light)',
+                                    border: '1px solid var(--error)',
+                                    borderRadius: 'var(--radius-md)',
+                                    color: 'var(--error-dark)',
+                                    marginBottom: 'var(--spacing-md)',
+                                    fontSize: '0.875rem'
+                                }}>
+                                    {formError}
+                                </div>
+                            )}
+
+                            <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '600',
+                                    color: 'var(--text-primary)',
+                                    marginBottom: 'var(--spacing-sm)'
+                                }}>
+                                    Username *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.username}
+                                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                                    placeholder="Enter student username"
+                                    className="input"
+                                    required
+                                    disabled={formLoading}
+                                    style={{ width: '100%' }}
+                                />
+                                <p style={{
+                                    fontSize: '0.75rem',
+                                    color: 'var(--text-secondary)',
+                                    marginTop: 'var(--spacing-xs)',
+                                    marginBottom: 0
+                                }}>
+                                    This will be used for student login
+                                </p>
+                            </div>
+
+                            <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '600',
+                                    color: 'var(--text-primary)',
+                                    marginBottom: 'var(--spacing-sm)'
+                                }}>
+                                    Password *
+                                </label>
+                                <input
+                                    type="password"
+                                    value={formData.password}
+                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                    placeholder="Minimum 6 characters"
+                                    className="input"
+                                    required
+                                    minLength={6}
+                                    disabled={formLoading}
+                                    style={{ width: '100%' }}
+                                />
+                                <p style={{
+                                    fontSize: '0.75rem',
+                                    color: 'var(--text-secondary)',
+                                    marginTop: 'var(--spacing-xs)',
+                                    marginBottom: 0
+                                }}>
+                                    Must be at least 6 characters long
+                                </p>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div style={{
+                                display: 'flex',
+                                gap: 'var(--spacing-md)',
+                                justifyContent: 'flex-end',
+                                marginTop: 'var(--spacing-xl)'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={handleCloseModal}
+                                    className="btn btn-outline"
+                                    disabled={formLoading}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary"
+                                    disabled={formLoading}
+                                >
+                                    {formLoading ? 'Creating...' : 'Create Student'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
