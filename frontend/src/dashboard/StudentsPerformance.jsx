@@ -15,6 +15,11 @@ const StudentsPerformance = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: 'averageScore', direction: 'desc' });
+    
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -32,8 +37,14 @@ const StudentsPerformance = () => {
                 setLoading(true);
                 setError('');
 
-                const response = await teacherAPI.getAcademyStudentsPerformance(academy.id);
+                const response = await teacherAPI.getAcademyStudentsPerformance(academy.id, { page: 1, limit: 10 });
                 setStudentsData(response.students || []);
+                
+                // Set pagination metadata
+                if (response.pagination) {
+                    setCurrentPage(response.pagination.currentPage);
+                    setTotalPages(response.pagination.totalPages);
+                }
             } catch (err) {
                 console.error('Error fetching students performance:', err);
                 setError(err.response?.data?.message || err.message || 'Failed to load performance data');
@@ -44,6 +55,29 @@ const StudentsPerformance = () => {
 
         fetchData();
     }, [isSignedIn, academy]);
+
+    // Load more students
+    const loadMoreStudents = async () => {
+        if (currentPage >= totalPages || !academy?.id) return;
+        
+        try {
+            setLoadingMore(true);
+            const nextPage = currentPage + 1;
+            const response = await teacherAPI.getAcademyStudentsPerformance(academy.id, { page: nextPage, limit: 10 });
+            
+            setStudentsData(prev => [...prev, ...(response.students || [])]);
+            
+            if (response.pagination) {
+                setCurrentPage(response.pagination.currentPage);
+                setTotalPages(response.pagination.totalPages);
+            }
+        } catch (err) {
+            console.error('Error loading more students:', err);
+            setError('Failed to load more students');
+        } finally {
+            setLoadingMore(false);
+        }
+    };
 
     // Sort students
     const sortedStudents = [...studentsData].sort((a, b) => {
@@ -403,6 +437,59 @@ const StudentsPerformance = () => {
                                 </tbody>
                             </table>
                         </div>
+                        
+                        {/* Load More Button */}
+                        {studentsData.length > 0 && currentPage < totalPages && (
+                            <div style={{ 
+                                padding: 'var(--spacing-xl)',
+                                textAlign: 'center',
+                                borderTop: '1px solid var(--neutral-200)'
+                            }}>
+                                <button
+                                    onClick={loadMoreStudents}
+                                    disabled={loadingMore}
+                                    style={{
+                                        background: loadingMore ? 'var(--neutral-200)' : 'var(--primary-purple)',
+                                        color: 'white',
+                                        border: 'none',
+                                        padding: '0.75rem 2rem',
+                                        borderRadius: 'var(--radius-md)',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '600',
+                                        cursor: loadingMore ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.2s',
+                                        minWidth: '200px'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!loadingMore) {
+                                            e.target.style.background = 'var(--primary-purple-dark)';
+                                            e.target.style.transform = 'translateY(-2px)';
+                                            e.target.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = loadingMore ? 'var(--neutral-200)' : 'var(--primary-purple)';
+                                        e.target.style.transform = 'translateY(0)';
+                                        e.target.style.boxShadow = 'none';
+                                    }}
+                                >
+                                    {loadingMore ? 'Loading...' : `Load More (Page ${currentPage + 1} of ${totalPages})`}
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* Pagination Info */}
+                        {studentsData.length > 0 && (
+                            <div style={{
+                                padding: 'var(--spacing-md)',
+                                textAlign: 'center',
+                                color: 'var(--text-secondary)',
+                                fontSize: '0.875rem',
+                                borderTop: currentPage < totalPages ? 'none' : '1px solid var(--neutral-200)'
+                            }}>
+                                Showing {studentsData.length} students (Page {currentPage} of {totalPages})
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

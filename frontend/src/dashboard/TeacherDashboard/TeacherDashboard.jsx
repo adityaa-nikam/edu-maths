@@ -34,7 +34,7 @@ const TeacherDashboard = () => {
           teacherAPI.getAcademyStudents(),
         ]);
 
-        console.log("[Teacher dashboard ] exam response", examsResponse );
+        //console.log("[Teacher dashboard ] exam response", examsResponse );
         
         setExams(examsResponse.exams || []);
         setStudents(studentsResponse.students || []);

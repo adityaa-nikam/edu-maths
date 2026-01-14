@@ -162,10 +162,8 @@ export const examAPI = {
   create: (data) => api.post('/api/exams/create', data),
 
   // Get all exams for academy (public) with pagination
-  getByAcademy: (academySlug, params = {}) => {
-    const queryParams = new URLSearchParams(params).toString();
-    return api.get(`/api/exams/academy/${academySlug}${queryParams ? `?${queryParams}` : ''}`);
-  },
+  getByAcademy: (academySlug, params = {}) => 
+    api.get(`/api/exams/academy/${academySlug}`, { params }),
 
   // Check exam status (student)
   getStatus: (examId) => api.get(`/api/exams/${examId}/status`),
@@ -196,18 +194,19 @@ export const examAPI = {
 export const teacherAPI = {
   // Get all exams for teacher's academy
   getAcademyExams: (params = {}) => 
-    api.get('/api/teacher/academy/exams', { params }) ,
+    api.get('/api/teacher/academy/exams', { params }),
 
   // Get all students for teacher's academy
-  getAcademyStudents: () => api.get('/api/teacher/academy/students'),
+  getAcademyStudents: (params = {}) => 
+    api.get('/api/teacher/academy/students', { params }),
 
   // Create a new student
   createStudent: (academyId, username, password) => 
     api.post('/api/students/create', { academyId, username, password }),
 
   // Get all students performance summary for academy
-  getAcademyStudentsPerformance: (academyId) => 
-    api.get(`/api/teacher/academy/${academyId}/students-performance`),
+  getAcademyStudentsPerformance: (academyId, params = {}) => 
+    api.get(`/api/teacher/academy/${academyId}/students-performance`, { params }),
 
   // Get individual student performance details
   getStudentPerformanceDetails: (studentId) => 

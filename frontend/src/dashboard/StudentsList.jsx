@@ -18,6 +18,11 @@ const StudentsList = () => {
     const [formError, setFormError] = useState('');
     const [formLoading, setFormLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
+    
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -35,8 +40,14 @@ const StudentsList = () => {
                 setLoading(true);
                 setError('');
 
-                const response = await teacherAPI.getAcademyStudents();
+                const response = await teacherAPI.getAcademyStudents({ page: 1, limit: 10 });
                 setStudents(response.students || []);
+                
+                // Set pagination metadata
+                if (response.pagination) {
+                    setCurrentPage(response.pagination.currentPage);
+                    setTotalPages(response.pagination.totalPages);
+                }
             } catch (err) {
                 console.error('Error fetching students:', err);
                 setError(err.message || 'Failed to load students');
@@ -47,6 +58,29 @@ const StudentsList = () => {
 
         fetchStudents();
     }, [isSignedIn]);
+
+    // Load more students
+    const loadMoreStudents = async () => {
+        if (currentPage >= totalPages) return;
+        
+        try {
+            setLoadingMore(true);
+            const nextPage = currentPage + 1;
+            const response = await teacherAPI.getAcademyStudents({ page: nextPage, limit: 10 });
+            
+            setStudents(prev => [...prev, ...(response.students || [])]);
+            
+            if (response.pagination) {
+                setCurrentPage(response.pagination.currentPage);
+                setTotalPages(response.pagination.totalPages);
+            }
+        } catch (err) {
+            console.error('Error loading more students:', err);
+            setError('Failed to load more students');
+        } finally {
+            setLoadingMore(false);
+        }
+    };
 
     // Format date
     const formatDate = (dateString) => {
@@ -84,9 +118,15 @@ const StudentsList = () => {
 
             await teacherAPI.createStudent(academy.id, formData.username, formData.password);
             
-            // Success - refresh students list
-            const response = await teacherAPI.getAcademyStudents();
+            // Success - refresh students list (reset to page 1)
+            const response = await teacherAPI.getAcademyStudents({ page: 1, limit: 10 });
             setStudents(response.students || []);
+            
+            // Reset pagination
+            if (response.pagination) {
+                setCurrentPage(response.pagination.currentPage);
+                setTotalPages(response.pagination.totalPages);
+            }
             
             // Show success message
             setSuccessMessage(`Student "${formData.username}" added successfully!`);
@@ -329,6 +369,59 @@ const StudentsList = () => {
                                 </tbody>
                             </table>
                         </div>
+                        
+                        {/* Load More Button */}
+                        {students.length > 0 && currentPage < totalPages && (
+                            <div style={{ 
+                                padding: 'var(--spacing-xl)',
+                                textAlign: 'center',
+                                borderTop: '1px solid var(--neutral-200)'
+                            }}>
+                                <button
+                                    onClick={loadMoreStudents}
+                                    disabled={loadingMore}
+                                    style={{
+                                        background: loadingMore ? 'var(--neutral-200)' : 'var(--primary-purple)',
+                                        color: 'white',
+                                        border: 'none',
+                                        padding: '0.75rem 2rem',
+                                        borderRadius: 'var(--radius-md)',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '600',
+                                        cursor: loadingMore ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.2s',
+                                        minWidth: '200px'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!loadingMore) {
+                                            e.target.style.background = 'var(--primary-purple-dark)';
+                                            e.target.style.transform = 'translateY(-2px)';
+                                            e.target.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = loadingMore ? 'var(--neutral-200)' : 'var(--primary-purple)';
+                                        e.target.style.transform = 'translateY(0)';
+                                        e.target.style.boxShadow = 'none';
+                                    }}
+                                >
+                                    {loadingMore ? 'Loading...' : `Load More (Page ${currentPage + 1} of ${totalPages})`}
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* Pagination Info */}
+                        {students.length > 0 && (
+                            <div style={{
+                                padding: 'var(--spacing-md)',
+                                textAlign: 'center',
+                                color: 'var(--text-secondary)',
+                                fontSize: '0.875rem',
+                                borderTop: currentPage < totalPages ? 'none' : '1px solid var(--neutral-200)'
+                            }}>
+                                Showing {students.length} students (Page {currentPage} of {totalPages})
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
