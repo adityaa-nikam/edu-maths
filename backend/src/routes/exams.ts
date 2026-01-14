@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateTeacher, authenticateStudent } from '../middlewares/index.js';
 import { db } from '../db/index.js';
 import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
 
 const router = Router();
@@ -99,6 +99,11 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
 router.get('/academy/:academySlug', async (req: Request, res: Response) => {
     try {
         const { academySlug } = req.params;
+        
+        // Parse pagination parameters
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
 
         // 1. Find Academy by Slug
         const academy = await db
@@ -116,7 +121,13 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
 
         const targetAcademy = academy[0];
 
-        // 2. Fetch All Exams for this Academy
+        // 2. Fetch Total Count of Exams
+        const totalExams = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.academyId, targetAcademy.id));
+
+        // 3. Fetch Paginated Exams for this Academy (sorted by createdAt DESC - latest first)
         const academyExams = await db
             .select({
                 id: exams.id,
@@ -124,9 +135,13 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
                 difficulty: exams.difficulty,
                 startTime: exams.startTime,
                 endTime: exams.endTime,
+                createdAt: exams.createdAt,
             })
             .from(exams)
-            .where(eq(exams.academyId, targetAcademy.id));
+            .where(eq(exams.academyId, targetAcademy.id))
+            .orderBy(desc(exams.createdAt))
+            .limit(limit)
+            .offset(offset);
 
         return res.status(200).json({
             academy: {
@@ -134,6 +149,12 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
                 slug: targetAcademy.slug,
             },
             exams: academyExams,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(totalExams.length / limit),
+                totalItems: totalExams.length,
+                itemsPerPage: limit,
+            },
         });
 
     } catch (error) {

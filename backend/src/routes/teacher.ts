@@ -322,6 +322,11 @@ router.get('/students/:studentId/performance', authenticateTeacher, async (req: 
 router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Response) => {
     try {
         const clerkUserId = req.clerkUserId!;
+        
+        // Parse pagination parameters
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
 
         // 1. Get Teacher's Academy
         const academy = await db
@@ -339,15 +344,24 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
 
         const teacherAcademy = academy[0];
 
-        // 2. Fetch All Exams for Academy
+        // 2. Fetch Total Count of Exams
         const allExams = await db
             .select()
             .from(exams)
             .where(eq(exams.academyId, teacherAcademy.id));
 
-        // 3. For Each Exam, Calculate Statistics
+        // 3. Fetch Paginated Exams for Academy (sorted by createdAt DESC - latest first)
+        const paginatedExams = await db
+            .select()
+            .from(exams)
+            .where(eq(exams.academyId, teacherAcademy.id))
+            .orderBy(desc(exams.createdAt))
+            .limit(limit)
+            .offset(offset);
+
+        // 4. For Each Paginated Exam, Calculate Statistics
         const examResults = await Promise.all(
-            allExams.map(async (exam) => {
+            paginatedExams.map(async (exam) => {
                 // Fetch all attempts for this exam
                 const attempts = await db
                     .select({
@@ -374,6 +388,7 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
                     durationMinutes: exam.durationMinutes,
                     startTime: exam.startTime,
                     endTime: exam.endTime,
+                    createdAt: exam.createdAt,
                     totalAttempts: attempts.length,
                     totalSubmitted: submittedAttempts.length,
                     averageScore,
@@ -381,12 +396,18 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
             })
         );
 
-        // 4. Return Results
+        // 5. Return Results with Pagination
         return res.status(200).json({
             academyId: teacherAcademy.id,
             academyName: teacherAcademy.name,
-            totalExams: examResults.length,
+            totalExams: allExams.length,
             exams: examResults,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(allExams.length / limit),
+                totalItems: allExams.length,
+                itemsPerPage: limit,
+            },
         });
 
     } catch (error) {
@@ -402,6 +423,11 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
 router.get('/academy/students', authenticateTeacher, async (req: Request, res: Response) => {
     try {
         const clerkUserId = req.clerkUserId!;
+        
+        // Parse pagination parameters
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
 
         // 1. Get Teacher's Academy
         const academy = await db
@@ -419,8 +445,14 @@ router.get('/academy/students', authenticateTeacher, async (req: Request, res: R
 
         const teacherAcademy = academy[0];
 
-        // 2. Fetch All Students for Academy
-        const allStudents = await db
+        // 2. Fetch Total Count of Students
+        const totalStudents = await db
+            .select()
+            .from(students)
+            .where(eq(students.academyId, teacherAcademy.id));
+
+        // 3. Fetch Paginated Students for Academy (sorted by createdAt DESC - newest first)
+        const paginatedStudents = await db
             .select({
                 id: students.id,
                 username: students.username,
@@ -428,14 +460,22 @@ router.get('/academy/students', authenticateTeacher, async (req: Request, res: R
             })
             .from(students)
             .where(eq(students.academyId, teacherAcademy.id))
-            .orderBy(desc(students.createdAt));
+            .orderBy(desc(students.createdAt))
+            .limit(limit)
+            .offset(offset);
 
-        // 3. Return Results
+        // 4. Return Results with Pagination
         return res.status(200).json({
             academyId: teacherAcademy.id,
             academyName: teacherAcademy.name,
-            totalStudents: allStudents.length,
-            students: allStudents,
+            totalStudents: totalStudents.length,
+            students: paginatedStudents,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(totalStudents.length / limit),
+                totalItems: totalStudents.length,
+                itemsPerPage: limit,
+            },
         });
 
     } catch (error) {
@@ -603,6 +643,11 @@ router.get('/academy/:academyId/students-performance', authenticateTeacher, asyn
     try {
         const { academyId } = req.params;
         const clerkUserId = req.clerkUserId!;
+        
+        // Parse pagination parameters
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
 
         // 1. Verify academy ownership
         const academy = await db
@@ -621,8 +666,8 @@ router.get('/academy/:academyId/students-performance', authenticateTeacher, asyn
             });
         }
 
-        // 2. Get all students in this academy with their stats
-        const studentsInAcademy = await db
+        // 2. Get total count of students in this academy
+        const allStudents = await db
             .select({
                 studentId: students.id,
                 username: students.username,
@@ -631,9 +676,22 @@ router.get('/academy/:academyId/students-performance', authenticateTeacher, asyn
             .from(students)
             .where(eq(students.academyId, academyId));
 
-        // 3. For each student, calculate their stats
+        // 3. Get paginated students (sorted by username)
+        const paginatedStudents = await db
+            .select({
+                studentId: students.id,
+                username: students.username,
+                createdAt: students.createdAt,
+            })
+            .from(students)
+            .where(eq(students.academyId, academyId))
+            .orderBy(asc(students.username))
+            .limit(limit)
+            .offset(offset);
+
+        // 4. For each paginated student, calculate their stats
         const studentsWithStats = await Promise.all(
-            studentsInAcademy.map(async (student) => {
+            paginatedStudents.map(async (student) => {
                 const performances = await db
                     .select({
                         score: examAttempts.score,
@@ -669,6 +727,12 @@ router.get('/academy/:academyId/students-performance', authenticateTeacher, asyn
                 name: academy[0].name,
             },
             students: studentsWithStats,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(allStudents.length / limit),
+                totalItems: allStudents.length,
+                itemsPerPage: limit,
+            },
         });
 
     } catch (error) {
