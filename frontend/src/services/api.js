@@ -161,8 +161,11 @@ export const examAPI = {
   // Create new exam (teacher)
   create: (data) => api.post('/api/exams/create', data),
 
-  // Get all exams for academy (public)
-  getByAcademy: (academySlug) => api.get(`/api/exams/academy/${academySlug}`),
+  // Get all exams for academy (public) with pagination
+  getByAcademy: (academySlug, params = {}) => {
+    const queryParams = new URLSearchParams(params).toString();
+    return api.get(`/api/exams/academy/${academySlug}${queryParams ? `?${queryParams}` : ''}`);
+  },
 
   // Check exam status (student)
   getStatus: (examId) => api.get(`/api/exams/${examId}/status`),
@@ -192,7 +195,8 @@ export const examAPI = {
 
 export const teacherAPI = {
   // Get all exams for teacher's academy
-  getAcademyExams: () => api.get('/api/teacher/academy/exams'),
+  getAcademyExams: (params = {}) => 
+    api.get('/api/teacher/academy/exams', { params }) ,
 
   // Get all students for teacher's academy
   getAcademyStudents: () => api.get('/api/teacher/academy/students'),

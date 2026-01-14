@@ -1,9 +1,15 @@
 import api from '../utils/axios';
 
 const teacherAPI = {
-    // Get all exams for teacher's academy
-    async getAcademyExams() {
-        const response = await api.get('/teacher/academy/exams');
+    // Get all exams for teacher's academy with pagination
+    async getAcademyExams(params = {}) {
+        console.log('🎯 teacherAPI.getAcademyExams called with params:', params);
+        console.log('🎯 typeof params:', typeof params);
+        console.log('🎯 params.page:', params.page, 'params.limit:', params.limit);
+        
+        const response = await api.get('/teacher/academy/exams', { params });
+        
+        console.log('🎯 Response pagination:', response.data?.pagination);
         return response.data;
     },
 

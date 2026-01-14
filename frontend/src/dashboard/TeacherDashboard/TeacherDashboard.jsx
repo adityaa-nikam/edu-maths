@@ -15,6 +15,11 @@ const TeacherDashboard = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // Pagination state for exams
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Fetch exams and students on mount
   useEffect(() => {
@@ -25,17 +30,20 @@ const TeacherDashboard = () => {
         
         // Fetch both exams and students in parallel
         const [examsResponse, studentsResponse] = await Promise.all([
-          teacherAPI.getAcademyExams(),
+          teacherAPI.getAcademyExams({ page: 1, limit: 10 }),
           teacherAPI.getAcademyStudents(),
         ]);
+
+        console.log("[Teacher dashboard ] exam response", examsResponse );
         
-        // Sort exams by startTime in descending order (latest first)
-        const sortedExams = (examsResponse.exams || []).sort((a, b) => 
-          new Date(b.startTime) - new Date(a.startTime)
-        );
-        
-        setExams(sortedExams);
+        setExams(examsResponse.exams || []);
         setStudents(studentsResponse.students || []);
+        
+        // Set pagination metadata for exams
+        if (examsResponse.pagination) {
+          setCurrentPage(examsResponse.pagination.currentPage);
+          setTotalPages(examsResponse.pagination.totalPages);
+        }
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
         setError(err.message || 'Failed to load dashboard data');
@@ -46,6 +54,46 @@ const TeacherDashboard = () => {
 
     fetchDashboardData();
   }, []);
+  
+  // Load more exams
+  const loadMoreExams = async () => {
+    if (currentPage >= totalPages) return;
+    
+    try {
+      setLoadingMore(true);
+      const nextPage = currentPage + 1;
+      console.log('🔄 Requesting page:', nextPage);
+      console.log('📊 Current state - Page:', currentPage, 'Total exams:', exams.length);
+      
+      const examsResponse = await teacherAPI.getAcademyExams({ page: nextPage, limit: 10 });
+      
+      console.log('📦 Response received:', examsResponse.exams?.length, 'exams');
+      console.log('📄 First new exam ID:', examsResponse.exams?.[0]?.examId);
+      console.log('📄 Last new exam ID:', examsResponse.exams?.[examsResponse.exams?.length - 1]?.examId);
+      console.log('📄 Current first exam ID:', exams[0]?.examId);
+      console.log('📄 Current last exam ID:', exams[exams.length - 1]?.examId);
+      
+      const newExams = examsResponse.exams || [];
+      console.log('➕ Appending', newExams.length, 'exams to existing', exams.length, 'exams');
+      
+      setExams(prev => {
+        const combined = [...prev, ...newExams];
+        console.log('✅ New total:', combined.length, 'exams');
+        return combined;
+      });
+      
+      if (examsResponse.pagination) {
+        console.log('📄 Updating pagination - Current:', examsResponse.pagination.currentPage, 'Total:', examsResponse.pagination.totalPages);
+        setCurrentPage(examsResponse.pagination.currentPage);
+        setTotalPages(examsResponse.pagination.totalPages);
+      }
+    } catch (err) {
+      console.error('Error loading more exams:', err);
+      setError('Failed to load more exams');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // Calculate stats
   const totalStudents = students.length;
@@ -422,6 +470,69 @@ const TeacherDashboard = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            
+            {/* Load More Button */}
+            {exams.length > 0 && currentPage < totalPages && (
+              <div style={{ 
+                textAlign: 'center', 
+                marginTop: 'var(--spacing-xl)', 
+                paddingTop: 'var(--spacing-lg)', 
+                borderTop: '1px solid var(--border-color)' 
+              }}>
+                <button
+                  onClick={loadMoreExams}
+                  disabled={loadingMore}
+                  style={{
+                    padding: '0.75rem 2rem',
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    color: loadingMore ? 'var(--text-secondary)' : 'var(--primary-purple)',
+                    backgroundColor: 'white',
+                    border: '2px solid var(--primary-purple)',
+                    borderRadius: 'var(--radius-lg)',
+                    cursor: loadingMore ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.3s ease',
+                    minWidth: '200px',
+                    opacity: loadingMore ? 0.6 : 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!loadingMore) {
+                      e.target.style.backgroundColor = 'var(--primary-purple)';
+                      e.target.style.color = 'white';
+                      e.target.style.transform = 'translateY(-2px)';
+                      e.target.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.3)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!loadingMore) {
+                      e.target.style.backgroundColor = 'white';
+                      e.target.style.color = 'var(--primary-purple)';
+                      e.target.style.transform = 'translateY(0)';
+                      e.target.style.boxShadow = 'none';
+                    }
+                  }}
+                >
+                  {loadingMore ? (
+                    <span>⏳ Loading...</span>
+                  ) : (
+                    <span>📄 Load More Exams • Page {currentPage + 1} of {totalPages}</span>
+                  )}
+                </button>
+              </div>
+            )}
+            
+            {/* Pagination Info */}
+            {exams.length > 0 && (
+              <div style={{ 
+                textAlign: 'center', 
+                marginTop: 'var(--spacing-md)',
+                color: 'var(--text-secondary)',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}>
+                📊 Showing {exams.length} exams • Page {currentPage} of {totalPages}
               </div>
             )}
           </div>

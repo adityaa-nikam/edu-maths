@@ -15,6 +15,11 @@ const AcademyPage = () => {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Fetch academy and exams on mount
   useEffect(() => {
@@ -29,15 +34,16 @@ const AcademyPage = () => {
           setAcademy(academyResponse.academy);
         }
 
-        // Fetch exams for this academy
-        const examsResponse = await examAPI.getByAcademy(academySlug);
+        // Fetch exams for this academy with pagination
+        const examsResponse = await examAPI.getByAcademy(academySlug, { page: 1, limit: 10 });
         
-        // Sort exams by startTime in descending order (latest first)
-        const sortedExams = (examsResponse.exams || []).sort((a, b) => 
-          new Date(b.startTime) - new Date(a.startTime)
-        );
+        setExams(examsResponse.exams || []);
         
-        setExams(sortedExams);
+        // Set pagination metadata
+        if (examsResponse.pagination) {
+          setCurrentPage(examsResponse.pagination.currentPage);
+          setTotalPages(examsResponse.pagination.totalPages);
+        }
       } catch (err) {
         console.error("Error fetching data:", err);
         setError(err.message || "Failed to load academy data");
@@ -48,6 +54,29 @@ const AcademyPage = () => {
 
     fetchData();
   }, [academySlug]);
+  
+  // Load more exams
+  const loadMoreExams = async () => {
+    if (currentPage >= totalPages) return;
+    
+    try {
+      setLoadingMore(true);
+      const nextPage = currentPage + 1;
+      const examsResponse = await examAPI.getByAcademy(academySlug, { page: nextPage, limit: 10 });
+      
+      setExams(prev => [...prev, ...(examsResponse.exams || [])]);
+      
+      if (examsResponse.pagination) {
+        setCurrentPage(examsResponse.pagination.currentPage);
+        setTotalPages(examsResponse.pagination.totalPages);
+      }
+    } catch (err) {
+      console.error("Error loading more exams:", err);
+      setError("Failed to load more exams");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleExamClick = (examId) => {
     if (!isAuthenticated) {
@@ -342,6 +371,32 @@ const AcademyPage = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+          
+          {/* Load More Button */}
+          {!loading && !error && exams.length > 0 && currentPage < totalPages && (
+            <div style={{ textAlign: 'center', marginTop: 'var(--spacing-xl)' }}>
+              <button
+                onClick={loadMoreExams}
+                disabled={loadingMore}
+                className="btn btn-outline"
+                style={{ minWidth: '200px' }}
+              >
+                {loadingMore ? 'Loading...' : `Load More (Page ${currentPage + 1} of ${totalPages})`}
+              </button>
+            </div>
+          )}
+          
+          {/* Pagination Info */}
+          {!loading && !error && exams.length > 0 && (
+            <div style={{ 
+              textAlign: 'center', 
+              marginTop: 'var(--spacing-md)',
+              color: 'var(--text-secondary)',
+              fontSize: '0.875rem'
+            }}>
+              Showing {exams.length} exams (Page {currentPage} of {totalPages})
             </div>
           )}
         </div>

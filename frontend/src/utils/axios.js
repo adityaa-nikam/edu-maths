@@ -11,6 +11,9 @@ const api = axios.create({
 // Request interceptor to add token to requests
 api.interceptors.request.use(
   (config) => {
+    // Log the request URL with params
+    console.log('🌐 Axios Request:', config.method?.toUpperCase(), config.url, 'Params:', config.params);
+    
     // 🔧 DEV MODE: Skip token requirement
     if (import.meta.env.VITE_DEV_AUTH_BYPASS === 'true') {
       // In dev mode, backend will inject fake identity
