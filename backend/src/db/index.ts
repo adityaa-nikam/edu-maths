@@ -16,7 +16,12 @@ let dbInstance: ReturnType<typeof drizzle> | null = null;
 export const getDb = () => {
   if (!dbInstance) {
     const connectionString = getConnectionString();
-    clientInstance = postgres(connectionString);
+    // Configure connection pool with proper limits
+    clientInstance = postgres(connectionString, {
+      max: 10, // Maximum 10 connections per instance
+      idle_timeout: 20, // Close idle connections after 20 seconds
+      connect_timeout: 10, // Connection timeout
+    });
     dbInstance = drizzle(clientInstance);
   }
   return dbInstance;

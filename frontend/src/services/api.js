@@ -204,6 +204,10 @@ export const teacherAPI = {
   createStudent: (academyId, username, password) => 
     api.post('/api/students/create', { academyId, username, password }),
 
+  // Delete a student
+  deleteStudent: (studentId) => 
+    api.delete(`/api/teacher/students/${studentId}`),
+
   // Get all students performance summary for academy
   getAcademyStudentsPerformance: (academyId, params = {}) => 
     api.get(`/api/teacher/academy/${academyId}/students-performance`, { params }),
