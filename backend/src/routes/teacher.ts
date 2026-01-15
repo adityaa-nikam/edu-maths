@@ -359,44 +359,53 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
             .limit(limit)
             .offset(offset);
 
-        // 4. For Each Paginated Exam, Calculate Statistics
-        const examResults = await Promise.all(
-            paginatedExams.map(async (exam) => {
-                // Fetch all attempts for this exam
-                const attempts = await db
-                    .select({
-                        score: examAttempts.score,
-                    })
-                    .from(examAttempts)
-                    .where(eq(examAttempts.examId, exam.id));
+        // 4. Fetch All Attempts in ONE Query (batched)
+        const examIds = paginatedExams.map(e => e.id);
 
-                // Filter submitted attempts
-                const submittedAttempts = attempts.filter(a => a.score !== null);
-
-                // Calculate average score
-                let averageScore = 0;
-                if (submittedAttempts.length > 0) {
-                    const totalScore = submittedAttempts.reduce((sum, a) => sum + a.score!, 0);
-                    averageScore = Math.round((totalScore / submittedAttempts.length) * 100) / 100;
-                }
-
-                return {
-                    examId: exam.id,
-                    title: exam.title,
-                    difficulty: exam.difficulty,
-                    totalQuestions: exam.totalQuestions,
-                    durationMinutes: exam.durationMinutes,
-                    startTime: exam.startTime,
-                    endTime: exam.endTime,
-                    createdAt: exam.createdAt,
-                    totalAttempts: attempts.length,
-                    totalSubmitted: submittedAttempts.length,
-                    averageScore,
-                };
+        const allAttempts = await db
+            .select({
+                examId: examAttempts.examId,
+                score: examAttempts.score,
             })
-        );
+            .from(examAttempts)
+            .where(inArray(examAttempts.examId, examIds));
 
-        // 5. Return Results with Pagination
+        // Group attempts by examId
+        const attemptsByExam = allAttempts.reduce((acc, attempt) => {
+            if (!acc[attempt.examId]) {
+                acc[attempt.examId] = [];
+            }
+            acc[attempt.examId].push(attempt);
+            return acc;
+        }, {} as Record<string, typeof allAttempts>);
+
+        // 5. Calculate Statistics for Each Exam
+        const examResults = paginatedExams.map((exam) => {
+            const attempts = attemptsByExam[exam.id] || [];
+            const submittedAttempts = attempts.filter(a => a.score !== null);
+
+            let averageScore = 0;
+            if (submittedAttempts.length > 0) {
+                const totalScore = submittedAttempts.reduce((sum, a) => sum + a.score!, 0);
+                averageScore = Math.round((totalScore / submittedAttempts.length) * 100) / 100;
+            }
+
+            return {
+                examId: exam.id,
+                title: exam.title,
+                difficulty: exam.difficulty,
+                totalQuestions: exam.totalQuestions,
+                durationMinutes: exam.durationMinutes,
+                startTime: exam.startTime,
+                endTime: exam.endTime,
+                createdAt: exam.createdAt,
+                totalAttempts: attempts.length,
+                totalSubmitted: submittedAttempts.length,
+                averageScore,
+            };
+        });
+
+        // 6. Return Results with Pagination
         return res.status(200).json({
             academyId: teacherAcademy.id,
             academyName: teacherAcademy.name,
@@ -689,37 +698,49 @@ router.get('/academy/:academyId/students-performance', authenticateTeacher, asyn
             .limit(limit)
             .offset(offset);
 
-        // 4. For each paginated student, calculate their stats
-        const studentsWithStats = await Promise.all(
-            paginatedStudents.map(async (student) => {
-                const performances = await db
-                    .select({
-                        score: examAttempts.score,
-                        submittedAt: examAttempts.submittedAt,
-                    })
-                    .from(examAttempts)
-                    .where(eq(examAttempts.studentId, student.studentId));
+        // 4. Fetch All Performances in ONE Query (batched)
+        const studentIds = paginatedStudents.map(s => s.studentId);
 
-                const submitted = performances.filter(p => p.submittedAt !== null);
-                const totalAttempted = performances.length;
-                const totalSubmitted = submitted.length;
-                let avgScore = 0;
-
-                if (submitted.length > 0) {
-                    const total = submitted.reduce((sum, p) => sum + (p.score || 0), 0);
-                    avgScore = Math.round((total / submitted.length) * 100) / 100;
-                }
-
-                return {
-                    studentId: student.studentId,
-                    username: student.username,
-                    joinedAt: student.createdAt,
-                    totalExamsAttempted: totalAttempted,
-                    totalExamsSubmitted: totalSubmitted,
-                    averageScore: avgScore,
-                };
+        const allPerformances = await db
+            .select({
+                studentId: examAttempts.studentId,
+                score: examAttempts.score,
+                submittedAt: examAttempts.submittedAt,
             })
-        );
+            .from(examAttempts)
+            .where(inArray(examAttempts.studentId, studentIds));
+
+        // Group performances by studentId
+        const performancesByStudent = allPerformances.reduce((acc, perf) => {
+            if (!acc[perf.studentId]) {
+                acc[perf.studentId] = [];
+            }
+            acc[perf.studentId].push(perf);
+            return acc;
+        }, {} as Record<string, typeof allPerformances>);
+
+        // 5. Calculate Statistics for Each Student
+        const studentsWithStats = paginatedStudents.map((student) => {
+            const performances = performancesByStudent[student.studentId] || [];
+            const submitted = performances.filter(p => p.submittedAt !== null);
+            const totalAttempted = performances.length;
+            const totalSubmitted = submitted.length;
+            let avgScore = 0;
+
+            if (submitted.length > 0) {
+                const total = submitted.reduce((sum, p) => sum + (p.score || 0), 0);
+                avgScore = Math.round((total / submitted.length) * 100) / 100;
+            }
+
+            return {
+                studentId: student.studentId,
+                username: student.username,
+                joinedAt: student.createdAt,
+                totalExamsAttempted: totalAttempted,
+                totalExamsSubmitted: totalSubmitted,
+                averageScore: avgScore,
+            };
+        });
 
         return res.status(200).json({
             academy: {
