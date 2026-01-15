@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import Footer from '../../common/Footer/Footer';
 import './DashboardLayout.css';
 
 const DashboardLayout = ({ children }) => {
@@ -162,7 +161,6 @@ const DashboardLayout = ({ children }) => {
                 {/* Main Content */}
                 <main className="dashboard-content">
                     {children}
-                    <Footer />
                 </main>
             </div>
         </div>
