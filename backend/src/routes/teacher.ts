@@ -744,4 +744,82 @@ router.get('/academy/:academyId/students-performance', authenticateTeacher, asyn
     }
 });
 
+// Delete a student
+router.delete('/students/:studentId', authenticateTeacher, async (req: Request, res: Response) => {
+    try {
+        const { studentId } = req.params;
+        const clerkUserId = req.clerkUserId!;
+
+        // 1. Verify Student Exists
+        const student = await db
+            .select()
+            .from(students)
+            .where(eq(students.id, studentId))
+            .limit(1);
+
+        if (student.length === 0) {
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Student not found',
+            });
+        }
+
+        const targetStudent = student[0];
+
+        // 2. Verify Student Belongs to Teacher's Academy
+        const academy = await db
+            .select()
+            .from(academies)
+            .where(and(
+                eq(academies.id, targetStudent.academyId),
+                eq(academies.clerkUserId, clerkUserId)
+            ))
+            .limit(1);
+
+        if (academy.length === 0) {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'You are not authorized to delete this student',
+            });
+        }
+
+        // 3. Check if student has any exam attempts
+        const attempts = await db
+            .select()
+            .from(examAttempts)
+            .where(eq(examAttempts.studentId, studentId))
+            .limit(1);
+
+        if (attempts.length > 0) {
+            // Student has exam history - don't allow deletion for data integrity
+            return res.status(409).json({
+                error: 'Conflict',
+                message: 'Cannot delete student with exam history. Student has taken exams.',
+                details: 'This student has attempted exams. Deleting would break exam records.',
+            });
+        }
+
+        // 4. Delete the student (no exam history)
+        await db
+            .delete(students)
+            .where(eq(students.id, studentId));
+
+        return res.status(200).json({
+            success: true,
+            message: 'Student deleted successfully',
+            deletedStudent: {
+                id: targetStudent.id,
+                username: targetStudent.username,
+            },
+        });
+
+    } catch (error) {
+        console.error('Error deleting student:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to delete student',
+        });
+    }
+});
+
 export default router;
