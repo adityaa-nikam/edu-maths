@@ -4,6 +4,8 @@ import { db } from '../db/index.js';
 import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
+import { getRedisClient, isRedisAvailable } from '../db/redis.js';
+import { getAcademyExamsKey, getExamStartLockKey } from '../utils/redisKeys.js';
 
 const router = Router();
 
@@ -81,6 +83,19 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
                 createdAt: exams.createdAt,
             });
 
+        // 5. Invalidate exam list cache for this academy
+        const redis = getRedisClient();
+        if (redis && isRedisAvailable()) {
+            try {
+                const redisKey = getAcademyExamsKey(academy[0].slug);
+                await redis.del(redisKey);
+                console.log(`🗑️ Cache invalidated: ${redisKey}`);
+            } catch (redisError) {
+                console.error('Redis error (cache invalidation):', redisError);
+                // Don't fail the request if cache invalidation fails
+            }
+        }
+
         return res.status(201).json({
             message: 'Exam created successfully',
             exam: newExam[0],
@@ -105,6 +120,40 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 10;
         const offset = (page - 1) * limit;
 
+        const redisKey = getAcademyExamsKey(academySlug);
+        const redis = getRedisClient();
+
+        // Try Redis cache first (if available)
+        if (redis && isRedisAvailable()) {
+            try {
+                const cached = await redis.get(redisKey);
+                if (cached) {
+                    console.log(`✅ Cache HIT: ${redisKey}`);
+                    const cachedData = JSON.parse(cached);
+                    
+                    // Apply pagination to cached data
+                    const startIdx = offset;
+                    const endIdx = offset + limit;
+                    const paginatedExams = cachedData.exams.slice(startIdx, endIdx);
+                    
+                    return res.status(200).json({
+                        academy: cachedData.academy,
+                        exams: paginatedExams,
+                        pagination: {
+                            currentPage: page,
+                            totalPages: Math.ceil(cachedData.exams.length / limit),
+                            totalItems: cachedData.exams.length,
+                            itemsPerPage: limit,
+                        },
+                    });
+                }
+                console.log(`❌ Cache MISS: ${redisKey}`);
+            } catch (redisError) {
+                console.error('Redis error (cache check):', redisError);
+                // Continue to database if Redis fails
+            }
+        }
+
         // 1. Find Academy by Slug
         const academy = await db
             .select()
@@ -121,14 +170,8 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
 
         const targetAcademy = academy[0];
 
-        // 2. Fetch Total Count of Exams
-        const totalExams = await db
-            .select()
-            .from(exams)
-            .where(eq(exams.academyId, targetAcademy.id));
-
-        // 3. Fetch Paginated Exams for this Academy (sorted by createdAt DESC - latest first)
-        const academyExams = await db
+        // 2. Fetch All Exams (for cache - no pagination yet)
+        const allExams = await db
             .select({
                 id: exams.id,
                 title: exams.title,
@@ -139,20 +182,41 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
             })
             .from(exams)
             .where(eq(exams.academyId, targetAcademy.id))
-            .orderBy(desc(exams.createdAt))
-            .limit(limit)
-            .offset(offset);
+            .orderBy(desc(exams.createdAt));
+
+        // Prepare data for caching (without pagination)
+        const cacheData = {
+            academy: {
+                name: targetAcademy.name,
+                slug: targetAcademy.slug,
+            },
+            exams: allExams,
+        };
+
+        // Store in Redis cache (if available) - 1 minute TTL
+        if (redis && isRedisAvailable()) {
+            try {
+                await redis.setex(redisKey, 60, JSON.stringify(cacheData));
+                console.log(`✅ Cached: ${redisKey} (TTL: 1 min)`);
+            } catch (redisError) {
+                console.error('Redis error (cache set):', redisError);
+                // Don't fail the request if caching fails
+            }
+        }
+
+        // 3. Apply pagination to response
+        const paginatedExams = allExams.slice(offset, offset + limit);
 
         return res.status(200).json({
             academy: {
                 name: targetAcademy.name,
                 slug: targetAcademy.slug,
             },
-            exams: academyExams,
+            exams: paginatedExams,
             pagination: {
                 currentPage: page,
-                totalPages: Math.ceil(totalExams.length / limit),
-                totalItems: totalExams.length,
+                totalPages: Math.ceil(allExams.length / limit),
+                totalItems: allExams.length,
                 itemsPerPage: limit,
             },
         });
@@ -233,12 +297,39 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
 
 // Start exam attempt
 router.post('/:examId/start', authenticateStudent, async (req: Request, res: Response) => {
-    try {
-        const { examId } = req.params;
-        const studentId = req.studentId!;
-        const studentAcademyId = req.academyId!;
+    const { examId } = req.params;
+    const studentId = req.studentId!;
+    const studentAcademyId = req.academyId!;
+    
+    const lockKey = getExamStartLockKey(examId, studentId);
+    const redis = getRedisClient();
+    let lockAcquired = false;
 
-        // 1. Verify Exam Exists
+    try {
+        // 1. Acquire Redis lock (if available) to prevent concurrent attempts
+        if (redis && isRedisAvailable()) {
+            try {
+                // SET NX (set if not exists) with 10 second expiry
+                const lockResult = await redis.set(lockKey, '1', 'EX', 10, 'NX');
+                
+                if (!lockResult) {
+                    // Lock already exists - another request is processing
+                    console.log(`🔒 Lock conflict: ${lockKey}`);
+                    return res.status(409).json({
+                        error: 'Conflict',
+                        message: 'An exam start request is already being processed. Please wait and try again.',
+                    });
+                }
+                
+                lockAcquired = true;
+                console.log(`🔓 Lock acquired: ${lockKey}`);
+            } catch (redisError) {
+                console.error('Redis error (lock acquisition):', redisError);
+                // Continue without lock if Redis fails (DB constraint is final guard)
+            }
+        }
+
+        // 2. Verify Exam Exists
         const exam = await db
             .select()
             .from(exams)
@@ -254,7 +345,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 
         const targetExam = exam[0];
 
-        // 2. Verify Exam Belongs to Student's Academy
+        // 3. Verify Exam Belongs to Student's Academy
         if (targetExam.academyId !== studentAcademyId) {
             return res.status(403).json({
                 error: 'Forbidden',
@@ -262,7 +353,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 3. Verify Exam is Active (current time within window)
+        // 4. Verify Exam is Active (current time within window)
         const now = new Date();
         const startTime = new Date(targetExam.startTime);
         const endTime = new Date(targetExam.endTime);
@@ -281,7 +372,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 4. Verify Student Has Not Attempted Exam Before
+        // 5. Verify Student Has Not Attempted Exam Before (DB is final authority)
         const existingAttempt = await db
             .select()
             .from(examAttempts)
@@ -298,13 +389,13 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 5. Fetch Random Questions and Lock Them
+        // 6. Fetch Random Questions and Lock Them
         const randomQuestions = await fetchRandomQuestions(
             targetExam.difficulty,
             targetExam.totalQuestions
         );
 
-        // 6. Create Exam Attempt Entry
+        // 7. Create Exam Attempt Entry
         const newAttempt = await db
             .insert(examAttempts)
             .values({
@@ -319,7 +410,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 
         const attemptId = newAttempt[0].id;
 
-        // 7. Pre-create exam_answers rows to lock questions
+        // 8. Pre-create exam_answers rows to lock questions
         // This ensures the student always gets the same questions for this attempt
         const examAnswerRows = randomQuestions.map(q => ({
             attemptId,
@@ -330,7 +421,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 
         await db.insert(examAnswers).values(examAnswerRows);
 
-        // 8. Return Attempt Details
+        // 9. Return Attempt Details
         return res.status(201).json({
             message: 'Exam attempt started successfully',
             attemptId,
@@ -344,6 +435,17 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             error: 'Internal Server Error',
             message: 'Failed to start exam attempt',
         });
+    } finally {
+        // 10. Release lock (if acquired)
+        if (lockAcquired && redis && isRedisAvailable()) {
+            try {
+                await redis.del(lockKey);
+                console.log(`🔓 Lock released: ${lockKey}`);
+            } catch (redisError) {
+                console.error('Redis error (lock release):', redisError);
+                // Lock will auto-expire in 10 seconds anyway
+            }
+        }
     }
 });
 
