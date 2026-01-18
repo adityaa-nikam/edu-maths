@@ -6,6 +6,8 @@ import academyRoutes from './routes/academy.js';
 import studentRoutes from './routes/students.js';
 import examRoutes from './routes/exams.js';
 import teacherRoutes from './routes/teacher.js';
+import { isRedisAvailable } from './db/redis.js';
+import { testConnection } from './db/index.js';
 
 const app = express();
 
@@ -29,11 +31,21 @@ app.use(express.urlencoded({ extended: true }));
 app.use(clerkMiddleware());
 
 // Health check route
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', async (req: Request, res: Response) => {
+  // Check database connectivity
+  const dbStatus = await testConnection();
+  
+  // Check Redis connectivity (informational only)
+  const redisStatus = isRedisAvailable();
+
   res.status(200).json({
     status: 'ok',
     message: 'Server is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    services: {
+      db: dbStatus ? 'ok' : 'down',
+      redis: redisStatus ? 'ok' : 'down'
+    }
   });
 });
 

@@ -3,3 +3,4 @@ postman/*
 PAGINATION.md
 .env
 ARCHITECTURE.md
+backend/REDIS_PHASE1_SETUP.md

@@ -1,6 +1,7 @@
 import 'dotenv/config'; // Must be first!
 import app from './app.js';
 import { testConnection } from './db/index.js';
+import { getRedisClient } from './db/redis.js';
 import healthJob from './utils/cron.js';
 
 
@@ -16,4 +17,7 @@ app.listen(PORT, async () => {
 
   // Test database connection
   await testConnection();
+
+  // Initialize Redis (optional - system works without it)
+  getRedisClient();
 });

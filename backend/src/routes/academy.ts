@@ -3,6 +3,8 @@ import { authenticateTeacher } from '../middlewares/index.js';
 import { db } from '../db/index.js';
 import { academies } from '../db/schema/index.js';
 import { eq } from 'drizzle-orm';
+import { getRedisClient, isRedisAvailable } from '../db/redis.js';
+import { getAcademyPublicKey } from '../utils/redisKeys.js';
 
 const router = Router();
 
@@ -61,6 +63,19 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
       })
       .returning();
 
+    // Invalidate cache for this slug (if it exists from a previous academy)
+    const redis = getRedisClient();
+    if (redis && isRedisAvailable()) {
+      try {
+        const redisKey = getAcademyPublicKey(slug);
+        await redis.del(redisKey);
+        console.log(`🗑️ Cache invalidated: ${redisKey}`);
+      } catch (redisError) {
+        console.error('Redis error (cache invalidation):', redisError);
+        // Don't fail the request if cache invalidation fails
+      }
+    }
+
     return res.status(201).json({
       message: 'Academy created successfully',
       academy: newAcademy[0],
@@ -78,8 +93,27 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
 router.get('/:slug', async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
+    const redisKey = getAcademyPublicKey(slug);
+    const redis = getRedisClient();
 
-    // Fetch academy by slug
+    // Try Redis cache first (if available)
+    if (redis && isRedisAvailable()) {
+      try {
+        const cached = await redis.get(redisKey);
+        if (cached) {
+          console.log(`✅ Cache HIT: ${redisKey}`);
+          return res.status(200).json({
+            academy: JSON.parse(cached),
+          });
+        }
+        console.log(`❌ Cache MISS: ${redisKey}`);
+      } catch (redisError) {
+        console.error('Redis error (cache check):', redisError);
+        // Continue to database if Redis fails
+      }
+    }
+
+    // Fetch academy by slug from PostgreSQL
     const academy = await db
       .select({
         name: academies.name,
@@ -97,8 +131,21 @@ router.get('/:slug', async (req: Request, res: Response) => {
       });
     }
 
+    const academyData = academy[0];
+
+    // Store in Redis cache (if available) - 5 minutes TTL
+    if (redis && isRedisAvailable()) {
+      try {
+        await redis.setex(redisKey, 300, JSON.stringify(academyData));
+        console.log(`✅ Cached: ${redisKey} (TTL: 5 mins)`);
+      } catch (redisError) {
+        console.error('Redis error (cache set):', redisError);
+        // Don't fail the request if caching fails
+      }
+    }
+
     return res.status(200).json({
-      academy: academy[0],
+      academy: academyData,
     });
   } catch (error) {
     console.error('Error fetching academy:', error);
