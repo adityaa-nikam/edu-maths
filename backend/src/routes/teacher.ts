@@ -972,6 +972,14 @@ router.delete('/students/:studentId', authenticateTeacher, async (req: Request, 
             .delete(students)
             .where(eq(students.id, studentId));
 
+        // 5. Invalidate teacher academy students cache (all pagination combos)
+        await cache.delPattern(`teacher:academy:${targetStudent.academyId}:students:*`);
+        logger.info('Cache invalidated for teacher academy students after deletion', {
+            academyId: targetStudent.academyId,
+            studentId,
+            pattern: `teacher:academy:${targetStudent.academyId}:students:*`,
+        });
+
         return res.status(200).json({
             success: true,
             message: 'Student deleted successfully',
