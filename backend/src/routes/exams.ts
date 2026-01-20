@@ -5,7 +5,7 @@ import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMe
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
 import { getRedisClient, isRedisAvailable } from '../db/redis.js';
-import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey } from '../utils/redisKeys.js';
+import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey, getStudentExamResultKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 import { finalizeExamAttempt } from '../utils/examFinalization.js';
 import { cache } from '../utils/cache.js';
@@ -1101,6 +1101,20 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
 
+        // CACHE: Check if result is cached
+        const cacheKey = getStudentExamResultKey(examId, studentId);
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam result', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
+
         // 1. Verify Exam Exists and Belongs to Student's Academy
         const exam = await db
             .select()
@@ -1155,8 +1169,8 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
             .from(examAnswers)
             .where(eq(examAnswers.attemptId, attemptData.id));
 
-        // 5. Return Result
-        return res.status(200).json({
+        // 5. Prepare Response
+        const responseData = {
             score: attemptData.score,
             totalQuestions: totalQuestions.length,
             percentage: Math.round((attemptData.score! / totalQuestions.length) * 100),
@@ -1164,7 +1178,22 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
             attemptId: attemptData.id,
             startedAt: attemptData.startedAt,
             durationMinutes: exam[0].durationMinutes,
+        };
+
+        // CACHE: Store the result for 5 minutes (results are immutable after submission)
+        await cache.set(cacheKey, responseData, 300);
+        
+        logger.info('Cache miss - exam result fetched from DB and cached', {
+            requestId: req.requestId,
+            examId,
+            studentId,
+            attemptId: attemptData.id,
+            cacheKey,
+            ttl: 300,
         });
+
+        // 6. Return Result
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error fetching exam result:', error);
