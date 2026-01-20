@@ -89,13 +89,21 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
                 createdAt: exams.createdAt,
             });
 
-        // 5. Invalidate exam list cache for this academy
+        // 5. Invalidate exam list caches for this academy
         const redis = getRedisClient();
         if (redis && isRedisAvailable()) {
             try {
-                const redisKey = getAcademyExamsKey(academy[0].slug);
-                await redis.del(redisKey);
-                console.log(`🗑️ Cache invalidated: ${redisKey}`);
+                // Invalidate public academy exams cache
+                const publicKey = getAcademyExamsKey(academy[0].slug);
+                await redis.del(publicKey);
+                console.log(`🗑️ Cache invalidated: ${publicKey}`);
+                
+                // Invalidate teacher dashboard exams cache (all pagination combos)
+                await cache.delPattern(`teacher:academy:${academyId}:exams:*`);
+                logger.info('Cache invalidated for teacher academy exams', {
+                    academyId,
+                    pattern: `teacher:academy:${academyId}:exams:*`,
+                });
             } catch (redisError) {
                 console.error('Redis error (cache invalidation):', redisError);
                 // Don't fail the request if cache invalidation fails
@@ -460,7 +468,14 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
         // 9. Set attempt as active in Redis (expires at global exam end time)
         await setExamAttemptActive(attemptId, targetExam.endTime);
 
-        // 10. Return Attempt Details
+        // 10. Invalidate student exam status cache (status changed from not_started to active)
+        await cache.del(`student:exam:${examId}:student:${studentId}:status`);
+        logger.info('Cache invalidated for student exam status after start', {
+            examId,
+            studentId,
+        });
+
+        // 11. Return Attempt Details
         return res.status(201).json({
             message: 'Exam attempt started successfully',
             attemptId,
@@ -475,7 +490,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             message: 'Failed to start exam attempt',
         });
     } finally {
-        // 10. Release lock (if acquired)
+        // 12. Release lock (if acquired)
         if (lockAcquired && redis && isRedisAvailable()) {
             try {
                 await redis.del(lockKey);
@@ -1082,7 +1097,18 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
         // 8. Store result in Redis for idempotency (10-minute window)
         await storeSubmitIdempotency(examId, studentId, response);
 
-        // 9. Return Results
+        // 9. Invalidate related caches after successful submission
+        await cache.delPattern(`teacher:exam:${examId}:summary*`);
+        await cache.delPattern(`teacher:exam:${examId}:attempts:*`);
+        await cache.del(`student:exam:${examId}:student:${studentId}:status`);
+        await cache.del(`student:exam:${examId}:student:${studentId}:questions`);
+        logger.info('Cache invalidated after exam submission', {
+            examId,
+            studentId,
+            patterns: ['exam summary', 'exam attempts', 'student status', 'student questions'],
+        });
+
+        // 10. Return Results
         return res.status(200).json(response);
 
     } catch (error) {

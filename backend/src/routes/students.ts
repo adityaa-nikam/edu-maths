@@ -5,6 +5,8 @@ import { students, academies, exams, examAttempts } from '../db/schema/index.js'
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { signStudentToken } from '../utils/jwt.js';
 import { eq, and, desc } from 'drizzle-orm';
+import { cache } from '../utils/cache.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -66,6 +68,13 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
                     academyId: students.academyId,
                     createdAt: students.createdAt,
                 });
+
+            // Invalidate teacher academy students cache (all pagination combos)
+            await cache.delPattern(`teacher:academy:${academyId}:students:*`);
+            logger.info('Cache invalidated for teacher academy students', {
+                academyId,
+                pattern: `teacher:academy:${academyId}:students:*`,
+            });
 
             return res.status(201).json({
                 message: 'Student created successfully',
