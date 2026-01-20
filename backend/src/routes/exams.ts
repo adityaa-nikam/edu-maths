@@ -5,9 +5,11 @@ import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMe
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
 import { getRedisClient, isRedisAvailable } from '../db/redis.js';
-import { getAcademyExamsKey, getExamStartLockKey } from '../utils/redisKeys.js';
+import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 import { finalizeExamAttempt } from '../utils/examFinalization.js';
+import { cache } from '../utils/cache.js';
+import { logger } from '../utils/logger.js';
 import { checkRateLimit, getRateLimitErrorMessage } from '../utils/rateLimit.js';
 import { checkSubmitIdempotency, storeSubmitIdempotency } from '../utils/idempotency.js';
 
@@ -238,7 +240,22 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
 router.get('/:examId/status', authenticateStudent, async (req: Request, res: Response) => {
     try {
         const { examId } = req.params;
+        const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // CACHE: Check if status is cached
+        const cacheKey = getStudentExamStatusKey(examId, studentId);
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam status', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
 
         // 1. Fetch Exam
         const exam = await db
@@ -279,7 +296,8 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             status = 'expired';
         }
 
-        return res.status(200).json({
+        // 4. Prepare Response
+        const responseData = {
             examId: targetExam.id,
             title: targetExam.title,
             difficulty: targetExam.difficulty,
@@ -288,7 +306,21 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             startTime: targetExam.startTime,
             endTime: targetExam.endTime,
             status,
+        };
+
+        // CACHE: Store the result for 10 seconds
+        await cache.set(cacheKey, responseData, 20);
+        
+        logger.info('Cache miss - exam status fetched from DB and cached', {
+            requestId: req.requestId,
+            examId,
+            studentId,
+            cacheKey,
+            status,
+            ttl: 10,
         });
+
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error checking exam status:', error);
