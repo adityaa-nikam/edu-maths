@@ -117,8 +117,110 @@ export const getSubmitIdempotencyKey = (examId: string, studentId: string): stri
   return `idempotency:submit:${examId}:${studentId}`;
 };
 
-// Add more key patterns here as we implement them
-// Examples for future phases:
-// - exam:public:{examId}
-// - student:profile:{studentId}
-// - exam:attempt:lock:{studentId}:{examId}
+/**
+ * Teacher academy exams cache keys
+ * 
+ * Pattern: teacher:academy:{academyId}:exams
+ * TTL: 60 seconds
+ * Usage: Cache teacher's view of all exams in their academy
+ * Invalidation: On exam create/update/delete for that academy
+ * 
+ * @param academyId - Academy UUID
+ * @returns Redis key string
+ */
+export const getTeacherAcademyExamsKey = (academyId: string): string => {
+  return `teacher:academy:${academyId}:exams`;
+};
+
+/**
+ * Teacher academy students cache keys
+ * 
+ * Pattern: teacher:academy:{academyId}:students
+ * TTL: 60 seconds
+ * Usage: Cache teacher's view of all students in their academy
+ * Invalidation: On student create/update/delete for that academy
+ * 
+ * @param academyId - Academy UUID
+ * @returns Redis key string
+ */
+export const getTeacherAcademyStudentsKey = (academyId: string): string => {
+  return `teacher:academy:${academyId}:students`;
+};
+
+/**
+ * Teacher exam summary cache keys
+ * 
+ * Pattern: teacher:exam:{examId}:summary
+ * TTL: 30 seconds
+ * Usage: Cache teacher's view of exam summary (avg score, completion rate, etc.)
+ * Invalidation: On exam submit for that exam
+ * 
+ * @param examId - Exam UUID
+ * @returns Redis key string
+ */
+export const getTeacherExamSummaryKey = (examId: string): string => {
+  return `teacher:exam:${examId}:summary`;
+};
+
+/**
+ * Teacher exam attempts cache keys
+ * 
+ * Pattern: teacher:exam:{examId}:attempts
+ * TTL: 30 seconds
+ * Usage: Cache teacher's view of all student attempts for an exam
+ * Invalidation: On exam submit for that exam
+ * 
+ * @param examId - Exam UUID
+ * @returns Redis key string
+ */
+export const getTeacherExamAttemptsKey = (examId: string): string => {
+  return `teacher:exam:${examId}:attempts`;
+};
+
+/**
+ * Student exam status cache keys
+ * 
+ * Pattern: student:exam:{examId}:student:{studentId}:status
+ * TTL: 10 seconds
+ * Usage: Cache student's exam status (active/completed/not started)
+ * Invalidation: On exam start or submit for that student/exam
+ * 
+ * @param examId - Exam UUID
+ * @param studentId - Student UUID
+ * @returns Redis key string
+ */
+export const getStudentExamStatusKey = (examId: string, studentId: string): string => {
+  return `student:exam:${examId}:student:${studentId}:status`;
+};
+
+/**
+ * Student exam questions cache keys
+ * 
+ * Pattern: student:exam:{examId}:student:{studentId}:questions
+ * TTL: Dynamic - expires at exam end time
+ * Usage: Cache student's exam questions (not answers)
+ * Invalidation: On exam submit for that student/exam
+ * 
+ * @param examId - Exam UUID
+ * @param studentId - Student UUID
+ * @returns Redis key string
+ */
+export const getStudentExamQuestionsKey = (examId: string, studentId: string): string => {
+  return `student:exam:${examId}:student:${studentId}:questions`;
+};
+
+/**
+ * Student exam result cache keys
+ * 
+ * Pattern: student:exam:{examId}:student:{studentId}:result
+ * TTL: 300 seconds (5 minutes)
+ * Usage: Cache student's exam result (score, answers, correct/incorrect)
+ * Invalidation: Rarely needed (results are immutable once submitted)
+ * 
+ * @param examId - Exam UUID
+ * @param studentId - Student UUID
+ * @returns Redis key string
+ */
+export const getStudentExamResultKey = (examId: string, studentId: string): string => {
+  return `student:exam:${examId}:student:${studentId}:result`;
+};

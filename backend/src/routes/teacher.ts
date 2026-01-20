@@ -3,6 +3,9 @@ import { authenticateTeacher } from '../middlewares/index.js';
 import { db } from '../db/index.js';
 import { exams, academies, examAttempts, students, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
 import { eq, and, desc, asc, inArray } from 'drizzle-orm';
+import { cache } from '../utils/cache.js';
+import { getTeacherAcademyExamsKey } from '../utils/redisKeys.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -344,6 +347,21 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
 
         const teacherAcademy = academy[0];
 
+        // CACHE: Check if data is cached (with pagination in key)
+        const cacheKey = `${getTeacherAcademyExamsKey(teacherAcademy.id)}:page:${page}:limit:${limit}`;
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for teacher academy exams', {
+                requestId: req.requestId,
+                academyId: teacherAcademy.id,
+                page,
+                limit,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
+
         // 2. Fetch Total Count of Exams
         const allExams = await db
             .select()
@@ -405,8 +423,8 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
             };
         });
 
-        // 6. Return Results with Pagination
-        return res.status(200).json({
+        // 6. Prepare Response
+        const responseData = {
             academyId: teacherAcademy.id,
             academyName: teacherAcademy.name,
             totalExams: allExams.length,
@@ -417,7 +435,22 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
                 totalItems: allExams.length,
                 itemsPerPage: limit,
             },
+        };
+
+        // CACHE: Store the result for 60 seconds
+        await cache.set(cacheKey, responseData, 60);
+        
+        logger.info('Cache miss - data fetched from DB and cached', {
+            requestId: req.requestId,
+            academyId: teacherAcademy.id,
+            page,
+            limit,
+            cacheKey,
+            ttl: 60,
         });
+
+        // 7. Return Results with Pagination
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error fetching academy exams:', error);
