@@ -51,6 +51,24 @@ export const getExamStartLockKey = (examId: string, studentId: string): string =
   return `exam:start:${examId}:${studentId}`;
 };
 
+/**
+ * Exam attempt active state keys
+ * 
+ * Pattern: exam:attempt:active:{attemptId}
+ * TTL: Dynamic - expires exactly at global exam end time
+ * Usage: Fast server-side check if exam attempt is still active
+ * Purpose: Avoid repeated DB queries and time calculations
+ * 
+ * Key existence = attempt is active
+ * Key absence = attempt is over (time expired or submitted)
+ * 
+ * @param attemptId - Exam attempt UUID
+ * @returns Redis key string
+ */
+export const getExamAttemptActiveKey = (attemptId: string): string => {
+  return `exam:attempt:active:${attemptId}`;
+};
+
 // Add more key patterns here as we implement them
 // Examples for future phases:
 // - exam:public:{examId}

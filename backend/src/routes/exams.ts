@@ -6,6 +6,7 @@ import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
 import { getRedisClient, isRedisAvailable } from '../db/redis.js';
 import { getAcademyExamsKey, getExamStartLockKey } from '../utils/redisKeys.js';
+import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 
 const router = Router();
 
@@ -421,7 +422,10 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 
         await db.insert(examAnswers).values(examAnswerRows);
 
-        // 9. Return Attempt Details
+        // 9. Set attempt as active in Redis (expires at global exam end time)
+        await setExamAttemptActive(attemptId, targetExam.endTime);
+
+        // 10. Return Attempt Details
         return res.status(201).json({
             message: 'Exam attempt started successfully',
             attemptId,
@@ -657,15 +661,14 @@ router.post('/:examId/answer', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 5. Check if Exam Duration Has Expired
-        const now = new Date();
-        const startedAt = new Date(attemptData.startedAt);
-        const expiryTime = new Date(startedAt.getTime() + targetExam.durationMinutes * 60 * 1000);
-
-        if (now > expiryTime) {
+        // 5. Centralized Timing Enforcement: Check if attempt is still active
+        // Uses Redis for fast check, falls back to DB if Redis unavailable
+        const isActive = await isExamAttemptActive(attemptData.id);
+        
+        if (!isActive) {
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'Exam time has expired. Please submit the exam.',
+                message: 'Exam time has expired or exam has been submitted',
             });
         }
 
@@ -794,15 +797,14 @@ router.post('/:examId/answers', authenticateStudent, async (req: Request, res: R
             });
         }
 
-        // 5. Check if Exam Duration Has Expired
-        const now = new Date();
-        const startedAt = new Date(attemptData.startedAt);
-        const expiryTime = new Date(startedAt.getTime() + targetExam.durationMinutes * 60 * 1000);
-
-        if (now > expiryTime) {
+        // 5. Centralized Timing Enforcement: Check if attempt is still active
+        // Uses Redis for fast check, falls back to DB if Redis unavailable
+        const isActive = await isExamAttemptActive(attemptData.id);
+        
+        if (!isActive) {
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'Exam time has expired. Please submit the exam.',
+                message: 'Exam time has expired or exam has been submitted',
             });
         }
 
@@ -913,11 +915,12 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 4. Check if Exam Duration Has Expired (Auto-submit logic)
+        // 4. Centralized Timing Enforcement: Check if attempt is still active
+        // Uses Redis for fast check, falls back to DB if Redis unavailable
+        // This determines if submission is auto-submit (expired) or manual
+        const isActive = await isExamAttemptActive(attemptData.id);
+        const isExpired = !isActive;
         const now = new Date();
-        const startedAt = new Date(attemptData.startedAt);
-        const expiryTime = new Date(startedAt.getTime() + targetExam.durationMinutes * 60 * 1000);
-        const isExpired = now > expiryTime;
 
         // 5. Fetch All Student's Answers
         const studentAnswers = await db
@@ -998,7 +1001,10 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
             })
             .where(eq(examAttempts.id, attemptData.id));
 
-        // 8. Return Results
+        // 8. Mark attempt as inactive in Redis (submitted)
+        await markExamAttemptInactive(attemptData.id);
+
+        // 9. Return Results
         return res.status(200).json({
             message: isExpired ? 'Exam auto-submitted (time expired)' : 'Exam submitted successfully',
             score,
