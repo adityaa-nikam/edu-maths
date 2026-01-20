@@ -4,7 +4,7 @@ import { db } from '../db/index.js';
 import { exams, academies, examAttempts, students, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
 import { eq, and, desc, asc, inArray } from 'drizzle-orm';
 import { cache } from '../utils/cache.js';
-import { getTeacherAcademyExamsKey, getTeacherAcademyStudentsKey, getTeacherAcademyInfoKey, getTeacherExamSummaryKey } from '../utils/redisKeys.js';
+import { getTeacherAcademyExamsKey, getTeacherAcademyStudentsKey, getTeacherAcademyInfoKey, getTeacherExamSummaryKey, getTeacherExamAttemptsKey } from '../utils/redisKeys.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -14,6 +14,39 @@ router.get('/exams/:examId/attempts', authenticateTeacher, async (req: Request, 
     try {
         const { examId } = req.params;
         const clerkUserId = req.clerkUserId!;
+
+        // 3. Parse Query Parameters
+        const sortBy = (req.query.sortBy as string) || 'submittedAt';
+        const order = (req.query.order as string) || 'desc';
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+
+        // Validate sortBy
+        const validSortFields = ['score', 'submittedAt'];
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'submittedAt';
+
+        // Validate order
+        const sortOrder = order === 'asc' ? asc : desc;
+
+        // Calculate offset
+        const offset = (page - 1) * limit;
+
+        // CACHE: Check if attempts are cached (with pagination/sorting in key)
+        const cacheKey = `${getTeacherExamAttemptsKey(examId)}:sort:${sortField}:order:${order}:page:${page}:limit:${limit}`;
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam attempts', {
+                requestId: req.requestId,
+                examId,
+                sortBy: sortField,
+                order,
+                page,
+                limit,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
 
         // 1. Verify Exam Exists
         const exam = await db
@@ -48,22 +81,6 @@ router.get('/exams/:examId/attempts', authenticateTeacher, async (req: Request, 
             });
         }
 
-        // 3. Parse Query Parameters
-        const sortBy = (req.query.sortBy as string) || 'submittedAt';
-        const order = (req.query.order as string) || 'desc';
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 50;
-
-        // Validate sortBy
-        const validSortFields = ['score', 'submittedAt'];
-        const sortField = validSortFields.includes(sortBy) ? sortBy : 'submittedAt';
-
-        // Validate order
-        const sortOrder = order === 'asc' ? asc : desc;
-
-        // Calculate offset
-        const offset = (page - 1) * limit;
-
         // 4. Fetch Total Count
         const totalAttempts = await db
             .select()
@@ -87,8 +104,8 @@ router.get('/exams/:examId/attempts', authenticateTeacher, async (req: Request, 
             .limit(limit)
             .offset(offset);
 
-        // 6. Return Results
-        return res.status(200).json({
+        // 6. Prepare Response
+        const responseData = {
             examId,
             examTitle: targetExam.title,
             totalAttempts: totalAttempts.length,
@@ -96,7 +113,24 @@ router.get('/exams/:examId/attempts', authenticateTeacher, async (req: Request, 
             limit,
             totalPages: Math.ceil(totalAttempts.length / limit),
             attempts,
+        };
+
+        // CACHE: Store the result for 30 seconds
+        await cache.set(cacheKey, responseData, 30);
+        
+        logger.info('Cache miss - exam attempts fetched from DB and cached', {
+            requestId: req.requestId,
+            examId,
+            sortBy: sortField,
+            order,
+            page,
+            limit,
+            cacheKey,
+            ttl: 30,
         });
+
+        // 7. Return Results
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error fetching exam attempts:', error);
