@@ -69,6 +69,38 @@ export const getExamAttemptActiveKey = (attemptId: string): string => {
   return `exam:attempt:active:${attemptId}`;
 };
 
+/**
+ * Rate limit keys for answer submissions
+ * 
+ * Pattern: ratelimit:answer:{examId}:{studentId}
+ * TTL: 1 second
+ * Usage: Track answer submission rate per student per exam
+ * Purpose: Prevent answer spamming and retry storms
+ * 
+ * @param examId - Exam UUID
+ * @param studentId - Student UUID
+ * @returns Redis key string
+ */
+export const getRateLimitAnswerKey = (examId: string, studentId: string): string => {
+  return `ratelimit:answer:${examId}:${studentId}`;
+};
+
+/**
+ * Rate limit keys for exam submission
+ * 
+ * Pattern: ratelimit:submit:{examId}:{studentId}
+ * TTL: 60 seconds
+ * Usage: Track exam submit attempts per student per exam
+ * Purpose: Prevent submit retry storms and malicious rapid-fire requests
+ * 
+ * @param examId - Exam UUID
+ * @param studentId - Student UUID
+ * @returns Redis key string
+ */
+export const getRateLimitSubmitKey = (examId: string, studentId: string): string => {
+  return `ratelimit:submit:${examId}:${studentId}`;
+};
+
 // Add more key patterns here as we implement them
 // Examples for future phases:
 // - exam:public:{examId}

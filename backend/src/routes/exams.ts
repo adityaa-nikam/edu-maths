@@ -8,6 +8,7 @@ import { getRedisClient, isRedisAvailable } from '../db/redis.js';
 import { getAcademyExamsKey, getExamStartLockKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 import { finalizeExamAttempt } from '../utils/examFinalization.js';
+import { checkRateLimit, getRateLimitErrorMessage } from '../utils/rateLimit.js';
 
 const router = Router();
 
@@ -597,6 +598,17 @@ router.post('/:examId/answer', authenticateStudent, async (req: Request, res: Re
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
 
+        // 0. Rate Limit Check (Per Student Per Exam)
+        const rateLimitResult = await checkRateLimit('answer', examId, studentId);
+        if (!rateLimitResult.allowed) {
+            return res.status(429).json({
+                error: 'Too Many Requests',
+                message: getRateLimitErrorMessage('answer', rateLimitResult.resetAt),
+                limit: rateLimitResult.limit,
+                remaining: rateLimitResult.remaining,
+            });
+        }
+
         // 1. Validate Input
         if (!questionId || selectedOption === undefined || selectedOption === null) {
             return res.status(400).json({
@@ -729,6 +741,17 @@ router.post('/:examId/answers', authenticateStudent, async (req: Request, res: R
         const { answers } = req.body;
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // 0. Rate Limit Check (Per Student Per Exam)
+        const rateLimitResult = await checkRateLimit('answer', examId, studentId);
+        if (!rateLimitResult.allowed) {
+            return res.status(429).json({
+                error: 'Too Many Requests',
+                message: getRateLimitErrorMessage('answer', rateLimitResult.resetAt),
+                limit: rateLimitResult.limit,
+                remaining: rateLimitResult.remaining,
+            });
+        }
 
         // 1. Validate Input
         if (!answers || !Array.isArray(answers) || answers.length === 0) {
@@ -877,6 +900,17 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
         const { examId } = req.params;
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // 0. Rate Limit Check (Per Student Per Exam)
+        const rateLimitResult = await checkRateLimit('submit', examId, studentId);
+        if (!rateLimitResult.allowed) {
+            return res.status(429).json({
+                error: 'Too Many Requests',
+                message: getRateLimitErrorMessage('submit', rateLimitResult.resetAt),
+                limit: rateLimitResult.limit,
+                remaining: rateLimitResult.remaining,
+            });
+        }
 
         // 1. Verify Exam Exists and Belongs to Student's Academy
         const exam = await db
