@@ -5,7 +5,7 @@ import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMe
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
 import { getRedisClient, isRedisAvailable } from '../db/redis.js';
-import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey } from '../utils/redisKeys.js';
+import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 import { finalizeExamAttempt } from '../utils/examFinalization.js';
 import { cache } from '../utils/cache.js';
@@ -495,6 +495,20 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
 
+        // CACHE: Check if questions are cached
+        const cacheKey = getStudentExamQuestionsKey(examId, studentId);
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam questions', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
+
         // 1. Fetch Exam
         const exam = await db
             .select()
@@ -603,7 +617,8 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
             .from(table)
             .where(inArray(table.id, questionIds));
 
-        return res.status(200).json({
+        // 7. Prepare Response
+        const responseData = {
             examId: targetExam.id,
             title: targetExam.title,
             difficulty: targetExam.difficulty,
@@ -612,7 +627,27 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
             attemptId,
             startedAt: attempt[0].startedAt,
             questions,
-        });
+        };
+
+        // CACHE: Calculate dynamic TTL until exam end time
+        const ttlSeconds = Math.floor((endTime.getTime() - now.getTime()) / 1000);
+        
+        // Only cache if there's time remaining (should always be true here due to earlier check)
+        if (ttlSeconds > 0) {
+            await cache.set(cacheKey, responseData, ttlSeconds);
+            
+            logger.info('Cache miss - exam questions fetched from DB and cached', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                attemptId,
+                cacheKey,
+                ttl: ttlSeconds,
+                examEndTime: endTime.toISOString(),
+            });
+        }
+
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error fetching exam questions:', error);
