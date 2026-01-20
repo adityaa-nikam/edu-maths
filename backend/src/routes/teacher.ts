@@ -4,7 +4,7 @@ import { db } from '../db/index.js';
 import { exams, academies, examAttempts, students, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
 import { eq, and, desc, asc, inArray } from 'drizzle-orm';
 import { cache } from '../utils/cache.js';
-import { getTeacherAcademyExamsKey, getTeacherAcademyStudentsKey } from '../utils/redisKeys.js';
+import { getTeacherAcademyExamsKey, getTeacherAcademyStudentsKey, getTeacherAcademyInfoKey, getTeacherExamSummaryKey } from '../utils/redisKeys.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -113,6 +113,19 @@ router.get('/exams/:examId/summary', authenticateTeacher, async (req: Request, r
         const { examId } = req.params;
         const clerkUserId = req.clerkUserId!;
 
+        // CACHE: Check if summary is cached
+        const cacheKey = getTeacherExamSummaryKey(examId);
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam summary', {
+                requestId: req.requestId,
+                examId,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
+
         // 1. Verify Exam Exists
         const exam = await db
             .select()
@@ -174,8 +187,8 @@ router.get('/exams/:examId/summary', authenticateTeacher, async (req: Request, r
             lowestScore = Math.min(...scores);
         }
 
-        // 5. Return Summary
-        return res.status(200).json({
+        // 5. Prepare Response
+        const responseData = {
             examId,
             examTitle: targetExam.title,
             totalQuestions: targetExam.totalQuestions,
@@ -187,7 +200,20 @@ router.get('/exams/:examId/summary', authenticateTeacher, async (req: Request, r
                 highestScore,
                 lowestScore,
             },
+        };
+
+        // CACHE: Store the result for 30 seconds
+        await cache.set(cacheKey, responseData, 30);
+        
+        logger.info('Cache miss - exam summary fetched from DB and cached', {
+            requestId: req.requestId,
+            examId,
+            cacheKey,
+            ttl: 30,
         });
+
+        // 6. Return Summary
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error fetching exam summary:', error);
@@ -331,21 +357,33 @@ router.get('/academy/exams', authenticateTeacher, async (req: Request, res: Resp
         const limit = parseInt(req.query.limit as string) || 10;
         const offset = (page - 1) * limit;
 
-        // 1. Get Teacher's Academy
-        const academy = await db
-            .select()
-            .from(academies)
-            .where(eq(academies.clerkUserId, clerkUserId))
-            .limit(1);
+        // 1. Get Teacher's Academy (with caching)
+        const academyInfoKey = getTeacherAcademyInfoKey(clerkUserId);
+        let teacherAcademy = await cache.get<any>(academyInfoKey);
+        
+        if (!teacherAcademy) {
+            const academy = await db
+                .select()
+                .from(academies)
+                .where(eq(academies.clerkUserId, clerkUserId))
+                .limit(1);
 
-        if (academy.length === 0) {
-            return res.status(404).json({
-                error: 'Not Found',
-                message: 'Academy not found',
+            if (academy.length === 0) {
+                return res.status(404).json({
+                    error: 'Not Found',
+                    message: 'Academy not found',
+                });
+            }
+
+            teacherAcademy = academy[0];
+            // Cache academy info for 5 minutes
+            await cache.set(academyInfoKey, teacherAcademy, 300);
+            logger.info('Academy info cached', {
+                requestId: req.requestId,
+                clerkUserId,
+                academyId: teacherAcademy.id,
             });
         }
-
-        const teacherAcademy = academy[0];
 
         // CACHE: Check if data is cached (with pagination in key)
         const cacheKey = `${getTeacherAcademyExamsKey(teacherAcademy.id)}:page:${page}:limit:${limit}`;
@@ -471,21 +509,33 @@ router.get('/academy/students', authenticateTeacher, async (req: Request, res: R
         const limit = parseInt(req.query.limit as string) || 10;
         const offset = (page - 1) * limit;
 
-        // 1. Get Teacher's Academy
-        const academy = await db
-            .select()
-            .from(academies)
-            .where(eq(academies.clerkUserId, clerkUserId))
-            .limit(1);
+        // 1. Get Teacher's Academy (with caching)
+        const academyInfoKey = getTeacherAcademyInfoKey(clerkUserId);
+        let teacherAcademy = await cache.get<any>(academyInfoKey);
+        
+        if (!teacherAcademy) {
+            const academy = await db
+                .select()
+                .from(academies)
+                .where(eq(academies.clerkUserId, clerkUserId))
+                .limit(1);
 
-        if (academy.length === 0) {
-            return res.status(404).json({
-                error: 'Not Found',
-                message: 'No academy found for this teacher',
+            if (academy.length === 0) {
+                return res.status(404).json({
+                    error: 'Not Found',
+                    message: 'No academy found for this teacher',
+                });
+            }
+
+            teacherAcademy = academy[0];
+            // Cache academy info for 5 minutes
+            await cache.set(academyInfoKey, teacherAcademy, 300);
+            logger.info('Academy info cached', {
+                requestId: req.requestId,
+                clerkUserId,
+                academyId: teacherAcademy.id,
             });
         }
-
-        const teacherAcademy = academy[0];
 
         // CACHE: Check if data is cached (with pagination in key)
         const cacheKey = `${getTeacherAcademyStudentsKey(teacherAcademy.id)}:page:${page}:limit:${limit}`;

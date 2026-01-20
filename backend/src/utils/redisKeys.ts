@@ -118,6 +118,21 @@ export const getSubmitIdempotencyKey = (examId: string, studentId: string): stri
 };
 
 /**
+ * Teacher academy info cache keys
+ * 
+ * Pattern: teacher:academy:clerk:{clerkUserId}
+ * TTL: 300 seconds (5 minutes)
+ * Usage: Cache teacher's academy info lookup to avoid repeated DB queries
+ * Invalidation: On academy update
+ * 
+ * @param clerkUserId - Clerk User ID
+ * @returns Redis key string
+ */
+export const getTeacherAcademyInfoKey = (clerkUserId: string): string => {
+  return `teacher:academy:clerk:${clerkUserId}`;
+};
+
+/**
  * Teacher academy exams cache keys
  * 
  * Pattern: teacher:academy:{academyId}:exams
