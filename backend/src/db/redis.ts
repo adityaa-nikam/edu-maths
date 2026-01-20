@@ -1,4 +1,6 @@
 import Redis from 'ioredis';
+import { redisHealthTracker } from '../utils/redisHealth.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Redis Client Setup
@@ -9,6 +11,7 @@ import Redis from 'ioredis';
  * - Redis is OPTIONAL - system must work if Redis is down
  * - PostgreSQL is the single source of truth
  * - Redis failures should log errors but NOT crash the server
+ * - Health tracking enabled for observability
  */
 
 let redisClient: Redis | null = null;
@@ -44,42 +47,57 @@ const initializeRedis = (): Redis | null => {
 
     // Connection event handlers
     client.on('connect', () => {
-      console.log('✅ Redis client connected');
+      logger.info('Redis client connected', { event: 'redis_connect' });
       redisAvailable = true;
+      redisHealthTracker.markHealthy();
     });
 
     client.on('ready', () => {
-      console.log('✅ Redis client ready');
+      logger.info('Redis client ready', { event: 'redis_ready' });
       redisAvailable = true;
+      redisHealthTracker.markHealthy();
     });
 
     client.on('error', (err) => {
-      console.error('❌ Redis connection error:', err.message);
+      logger.error('Redis connection error', { 
+        event: 'redis_error', 
+        error: err.message 
+      });
       redisAvailable = false;
+      redisHealthTracker.markUnhealthy(err.message);
       // DO NOT throw - system must work without Redis
     });
 
     client.on('close', () => {
-      console.log('⚠️ Redis connection closed');
+      logger.warn('Redis connection closed', { event: 'redis_close' });
       redisAvailable = false;
+      redisHealthTracker.markUnhealthy('Connection closed');
     });
 
     client.on('reconnecting', () => {
-      console.log('🔄 Redis reconnecting...');
+      logger.info('Redis reconnecting', { event: 'redis_reconnecting' });
       redisAvailable = false;
     });
 
     // Attempt to connect
     client.connect().catch((err) => {
-      console.error('❌ Failed to connect to Redis:', err.message);
-      console.log('⚠️ System will continue without Redis');
+      logger.error('Failed to connect to Redis', { 
+        event: 'redis_connect_failed', 
+        error: err.message 
+      });
+      logger.mode('degraded', 'Redis connection failed');
       redisAvailable = false;
+      redisHealthTracker.markUnhealthy(err.message);
     });
 
     return client;
   } catch (error) {
-    console.error('❌ Error initializing Redis client:', error);
-    console.log('⚠️ System will continue without Redis');
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Error initializing Redis client', { 
+      event: 'redis_init_failed', 
+      error: errorMessage 
+    });
+    logger.mode('degraded', 'Redis initialization failed');
     return null;
   }
 };
@@ -110,12 +128,23 @@ export const closeRedis = async (): Promise<void> => {
   if (redisClient) {
     try {
       await redisClient.quit();
-      console.log('✅ Redis connection closed gracefully');
+      logger.info('Redis connection closed gracefully', { event: 'redis_shutdown' });
     } catch (error) {
-      console.error('❌ Error closing Redis connection:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error closing Redis connection', { 
+        event: 'redis_shutdown_failed', 
+        error: errorMessage 
+      });
     } finally {
       redisClient = null;
       redisAvailable = false;
     }
   }
+};
+
+/**
+ * Get Redis health status
+ */
+export const getRedisHealth = () => {
+  return redisHealthTracker.getStatus();
 };
