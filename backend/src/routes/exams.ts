@@ -7,6 +7,7 @@ import { fetchRandomQuestions } from '../services/questions.js';
 import { getRedisClient, isRedisAvailable } from '../db/redis.js';
 import { getAcademyExamsKey, getExamStartLockKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
+import { finalizeExamAttempt } from '../utils/examFinalization.js';
 
 const router = Router();
 
@@ -666,9 +667,15 @@ router.post('/:examId/answer', authenticateStudent, async (req: Request, res: Re
         const isActive = await isExamAttemptActive(attemptData.id);
         
         if (!isActive) {
+            // AUTO-SUBMIT TRIGGER: If time expired and not yet submitted, finalize the exam
+            if (attemptData.submittedAt === null) {
+                console.log(`🔄 Auto-submit triggered for attempt ${attemptData.id} (answer request after expiry)`);
+                await finalizeExamAttempt(attemptData.id, true);
+            }
+
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'Exam time has expired or exam has been submitted',
+                message: 'Exam time has expired. Your exam has been automatically submitted.',
             });
         }
 
@@ -802,9 +809,15 @@ router.post('/:examId/answers', authenticateStudent, async (req: Request, res: R
         const isActive = await isExamAttemptActive(attemptData.id);
         
         if (!isActive) {
+            // AUTO-SUBMIT TRIGGER: If time expired and not yet submitted, finalize the exam
+            if (attemptData.submittedAt === null) {
+                console.log(`🔄 Auto-submit triggered for attempt ${attemptData.id} (batch answers request after expiry)`);
+                await finalizeExamAttempt(attemptData.id, true);
+            }
+
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'Exam time has expired or exam has been submitted',
+                message: 'Exam time has expired. Your exam has been automatically submitted.',
             });
         }
 
@@ -920,98 +933,37 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
         // This determines if submission is auto-submit (expired) or manual
         const isActive = await isExamAttemptActive(attemptData.id);
         const isExpired = !isActive;
-        const now = new Date();
 
-        // 5. Fetch All Student's Answers
-        const studentAnswers = await db
-            .select()
-            .from(examAnswers)
-            .where(eq(examAnswers.attemptId, attemptData.id));
+        // 5. Finalize Exam Attempt (Shared Logic for Manual and Auto-Submit)
+        const result = await finalizeExamAttempt(attemptData.id, isExpired);
 
-        if (studentAnswers.length === 0) {
+        if (!result.success) {
             return res.status(500).json({
                 error: 'Internal Server Error',
-                message: 'No answers found for this attempt',
+                message: result.error || 'Failed to submit exam',
             });
         }
 
-        // 5. Fetch Correct Answers from Question Bank
-        const questionIds = studentAnswers.map(a => a.questionId);
-
-        // Select the appropriate table based on difficulty
-        let table;
-        switch (targetExam.difficulty) {
-            case 'easy':
-                table = questionsEasy;
-                break;
-            case 'medium':
-                table = questionsMedium;
-                break;
-            case 'hard':
-                table = questionsHard;
-                break;
-            default:
-                return res.status(500).json({
-                    error: 'Internal Server Error',
-                    message: 'Invalid difficulty level',
-                });
+        // If attempt was already submitted by concurrent request, return existing result
+        if (result.alreadySubmitted) {
+            return res.status(200).json({
+                message: 'Exam already submitted',
+                score: result.score,
+                totalQuestions: result.totalQuestions,
+                percentage: result.percentage,
+                submittedAt: result.submittedAt,
+                autoSubmitted: result.autoSubmitted,
+            });
         }
 
-        const correctAnswers = await db
-            .select({
-                id: table.id,
-                correctOption: table.correctOption,
-            })
-            .from(table)
-            .where(inArray(table.id, questionIds));
-
-        // Create a map for quick lookup
-        const correctAnswersMap = new Map(
-            correctAnswers.map(q => [q.id, q.correctOption])
-        );
-
-        // 6. Evaluate Answers and Calculate Score
-        let score = 0;
-        for (const answer of studentAnswers) {
-            const correctOption = correctAnswersMap.get(answer.questionId);
-
-            if (correctOption !== undefined) {
-                const isCorrect = answer.selectedOption === correctOption;
-
-                // Update the isCorrect field
-                await db
-                    .update(examAnswers)
-                    .set({
-                        isCorrect,
-                    })
-                    .where(eq(examAnswers.id, answer.id));
-
-                if (isCorrect) {
-                    score++;
-                }
-            }
-        }
-
-        // 7. Update Exam Attempt with Score and Submission Time
-        await db
-            .update(examAttempts)
-            .set({
-                score,
-                submittedAt: now,
-            })
-            .where(eq(examAttempts.id, attemptData.id));
-
-        // 8. Mark attempt as inactive in Redis (submitted)
-        await markExamAttemptInactive(attemptData.id);
-
-        // 9. Return Results
+        // 6. Return Results
         return res.status(200).json({
             message: isExpired ? 'Exam auto-submitted (time expired)' : 'Exam submitted successfully',
-            score,
-            totalQuestions: studentAnswers.length,
-            percentage: Math.round((score / studentAnswers.length) * 100),
-            submittedAt: now,
-            autoSubmitted: isExpired,
+            score: result.score,
+            totalQuestions: result.totalQuestions,
+            percentage: result.percentage,
+            submittedAt: result.submittedAt,
+            autoSubmitted: result.autoSubmitted,
         });
 
     } catch (error) {
