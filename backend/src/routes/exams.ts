@@ -9,6 +9,7 @@ import { getAcademyExamsKey, getExamStartLockKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 import { finalizeExamAttempt } from '../utils/examFinalization.js';
 import { checkRateLimit, getRateLimitErrorMessage } from '../utils/rateLimit.js';
+import { checkSubmitIdempotency, storeSubmitIdempotency } from '../utils/idempotency.js';
 
 const router = Router();
 
@@ -901,7 +902,13 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
 
-        // 0. Rate Limit Check (Per Student Per Exam)
+        // 0. Idempotency Check - Return cached result if this submission was already processed
+        const cachedResult = await checkSubmitIdempotency(examId, studentId);
+        if (cachedResult) {
+            return res.status(200).json(cachedResult);
+        }
+
+        // 1. Rate Limit Check (Per Student Per Exam)
         const rateLimitResult = await checkRateLimit('submit', examId, studentId);
         if (!rateLimitResult.allowed) {
             return res.status(429).json({
@@ -912,7 +919,7 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 1. Verify Exam Exists and Belongs to Student's Academy
+        // 2. Verify Exam Exists and Belongs to Student's Academy
         const exam = await db
             .select()
             .from(exams)
@@ -935,7 +942,7 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 2. Verify Attempt Exists
+        // 3. Verify Attempt Exists
         const attempt = await db
             .select()
             .from(examAttempts)
@@ -954,7 +961,7 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
 
         const attemptData = attempt[0];
 
-        // 3. Verify Not Already Submitted
+        // 4. Verify Not Already Submitted
         if (attemptData.submittedAt !== null) {
             return res.status(400).json({
                 error: 'Bad Request',
@@ -962,13 +969,13 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 4. Centralized Timing Enforcement: Check if attempt is still active
+        // 5. Centralized Timing Enforcement: Check if attempt is still active
         // Uses Redis for fast check, falls back to DB if Redis unavailable
         // This determines if submission is auto-submit (expired) or manual
         const isActive = await isExamAttemptActive(attemptData.id);
         const isExpired = !isActive;
 
-        // 5. Finalize Exam Attempt (Shared Logic for Manual and Auto-Submit)
+        // 6. Finalize Exam Attempt (Shared Logic for Manual and Auto-Submit)
         const result = await finalizeExamAttempt(attemptData.id, isExpired);
 
         if (!result.success) {
@@ -980,25 +987,36 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
 
         // If attempt was already submitted by concurrent request, return existing result
         if (result.alreadySubmitted) {
-            return res.status(200).json({
+            const response = {
                 message: 'Exam already submitted',
-                score: result.score,
-                totalQuestions: result.totalQuestions,
-                percentage: result.percentage,
-                submittedAt: result.submittedAt,
-                autoSubmitted: result.autoSubmitted,
-            });
+                score: result.score!,
+                totalQuestions: result.totalQuestions!,
+                percentage: result.percentage!,
+                submittedAt: result.submittedAt!,
+                autoSubmitted: result.autoSubmitted!,
+            };
+            
+            // Store in Redis for future duplicate requests
+            await storeSubmitIdempotency(examId, studentId, response);
+            
+            return res.status(200).json(response);
         }
 
-        // 6. Return Results
-        return res.status(200).json({
+        // 7. Prepare response
+        const response = {
             message: isExpired ? 'Exam auto-submitted (time expired)' : 'Exam submitted successfully',
-            score: result.score,
-            totalQuestions: result.totalQuestions,
-            percentage: result.percentage,
-            submittedAt: result.submittedAt,
-            autoSubmitted: result.autoSubmitted,
-        });
+            score: result.score!,
+            totalQuestions: result.totalQuestions!,
+            percentage: result.percentage!,
+            submittedAt: result.submittedAt!,
+            autoSubmitted: result.autoSubmitted!,
+        };
+
+        // 8. Store result in Redis for idempotency (10-minute window)
+        await storeSubmitIdempotency(examId, studentId, response);
+
+        // 9. Return Results
+        return res.status(200).json(response);
 
     } catch (error) {
         console.error('Error submitting exam:', error);

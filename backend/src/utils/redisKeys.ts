@@ -101,6 +101,22 @@ export const getRateLimitSubmitKey = (examId: string, studentId: string): string
   return `ratelimit:submit:${examId}:${studentId}`;
 };
 
+/**
+ * Submit idempotency keys
+ * 
+ * Pattern: idempotency:submit:{examId}:{studentId}
+ * TTL: 600 seconds (10 minutes)
+ * Usage: Ensure exam submission is idempotent - duplicate requests return cached result
+ * Purpose: Prevent duplicate score calculation, handle retries, auto-submit races
+ * 
+ * @param examId - Exam UUID
+ * @param studentId - Student UUID
+ * @returns Redis key string
+ */
+export const getSubmitIdempotencyKey = (examId: string, studentId: string): string => {
+  return `idempotency:submit:${examId}:${studentId}`;
+};
+
 // Add more key patterns here as we implement them
 // Examples for future phases:
 // - exam:public:{examId}
