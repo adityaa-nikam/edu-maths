@@ -1,21 +1,55 @@
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useStudentAuth } from '../contexts/StudentAuthContext';
+import { useUser } from '@clerk/clerk-react';
 
 /**
  * Protected Route Component
  * Protects routes that require authentication
  * 
  * Usage:
- * <ProtectedRoute type="teacher">
+ * <ProtectedRoute type="teacher" validateSlug={true}>
  *   <TeacherDashboard />
  * </ProtectedRoute>
  */
-const ProtectedRoute = ({ children, type = 'teacher', requireAcademy = false }) => {
+const ProtectedRoute = ({ children, type = 'teacher', requireAcademy = false, validateSlug = false }) => {
   const location = useLocation();
-  const { isAuthenticated: isTeacherAuth, loading: teacherLoading, hasAcademy } = useAuth();
+  const navigate = useNavigate();
+  const { academySlug } = useParams();
+  const { user } = useUser();
+  const { isAuthenticated: isTeacherAuth, loading: teacherLoading, hasAcademy, academy } = useAuth();
   const { isAuthenticated: isStudentAuth, loading: studentLoading } = useStudentAuth();
+
+
+  // Validate academy slug for teachers
+  useEffect(() => {
+    // Wait for academy data to load
+    if (type === 'teacher' && validateSlug && academy && academySlug) {
+      const teacherAcademySlug = academy.slug;
+      
+      console.log('=== Validating Academy Slug ===');
+      console.log('URL slug:', academySlug);
+      console.log('Teacher academy slug:', teacherAcademySlug);
+
+      if (teacherAcademySlug && academySlug !== teacherAcademySlug) {
+        console.log('🚨 MISMATCH DETECTED - Redirecting to correct academy...');
+        
+        // Replace the slug in the current path
+        const pathParts = location.pathname.split('/');
+        pathParts[1] = teacherAcademySlug; // Replace slug at index 1
+        const correctedPath = pathParts.join('/');
+        
+        console.log('Redirecting from:', location.pathname);
+        console.log('Redirecting to:', correctedPath);
+        
+        navigate(correctedPath, { replace: true });
+      } else {
+        console.log('✅ Slug validation passed');
+      }
+    }
+  }, [academySlug, academy, navigate, location.pathname, type, validateSlug]);
+
 
   // Show loading state while checking authentication
   if (type === 'teacher' && teacherLoading) {

@@ -56,7 +56,7 @@ function App() {
         <Route 
           path="/:academySlug/dashboard" 
           element={
-            <ProtectedRoute type="teacher" requireAcademy>
+            <ProtectedRoute type="teacher" requireAcademy validateSlug={true}>
               <TeacherDashboard />
             </ProtectedRoute>
           } 
@@ -64,7 +64,7 @@ function App() {
         <Route 
           path="/:academySlug/dashboard/create-exam" 
           element={
-            <ProtectedRoute type="teacher" requireAcademy>
+            <ProtectedRoute type="teacher" requireAcademy validateSlug={true}>
               <CreateExam />
             </ProtectedRoute>
           } 
@@ -72,7 +72,7 @@ function App() {
         <Route 
           path="/:academySlug/dashboard/exams/:examId" 
           element={
-            <ProtectedRoute type="teacher" requireAcademy>
+            <ProtectedRoute type="teacher" requireAcademy validateSlug={true}>
               <TeacherExamMonitoring />
             </ProtectedRoute>
           } 
@@ -80,7 +80,7 @@ function App() {
         <Route 
           path="/:academySlug/dashboard/exams/:examId/student/:studentId" 
           element={
-            <ProtectedRoute type="teacher" requireAcademy>
+            <ProtectedRoute type="teacher" requireAcademy validateSlug={true}>
               <StudentExamDetails />
             </ProtectedRoute>
           } 
@@ -88,7 +88,7 @@ function App() {
         <Route 
           path="/:academySlug/students" 
           element={
-            <ProtectedRoute type="teacher" requireAcademy>
+            <ProtectedRoute type="teacher" requireAcademy validateSlug={true}>
               <StudentsList />
             </ProtectedRoute>
           } 
@@ -96,7 +96,7 @@ function App() {
         <Route 
           path="/:academySlug/students/:studentId" 
           element={
-            <ProtectedRoute type="teacher" requireAcademy>
+            <ProtectedRoute type="teacher" requireAcademy validateSlug={true}>
               <StudentPerformanceDetails />
             </ProtectedRoute>
           } 
@@ -104,7 +104,7 @@ function App() {
         <Route 
           path="/:academySlug/results" 
           element={
-            <ProtectedRoute type="teacher" requireAcademy>
+            <ProtectedRoute type="teacher" requireAcademy validateSlug={true}>
               <StudentsPerformance />
             </ProtectedRoute>
           } 
