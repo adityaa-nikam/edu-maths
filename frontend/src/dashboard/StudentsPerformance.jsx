@@ -22,18 +22,16 @@ const StudentsPerformance = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [loadingMore, setLoadingMore] = useState(false);
 
+    // Redirect if not authenticated
+    useEffect(() => {
+        if (isLoaded && !isSignedIn) {
+            navigate('/login');
+        }
+    }, [isLoaded, isSignedIn, navigate]);
+
     // Fetch students performance data
     useEffect(() => {
-        if (!isLoaded) return; // Wait for auth to load
-        if (!isSignedIn) {
-            navigate('/login');
-            return;
-        }
-        if (!academy?.id) {
-            setLoading(false);
-            setError('Academy not found. Please select an academy.');
-            return;
-        }
+        if (!isSignedIn || !academy?.id) return;
 
         const fetchData = async () => {
             try {
@@ -41,6 +39,7 @@ const StudentsPerformance = () => {
                 setError('');
 
                 const response = await teacherAPI.getAcademyStudentsPerformance(academy.id, { page: 1, limit: 10 });
+                //console.log( "STUDENT PERFORMANCE:-",response);
                 setStudentsData(response.students || []);
 
                 // Set pagination metadata
@@ -57,7 +56,7 @@ const StudentsPerformance = () => {
         };
 
         fetchData();
-    }, [isLoaded, isSignedIn, academy, navigate]);
+    }, [isLoaded, isSignedIn, academy?.id, navigate]);
 
     // Load more students
     const loadMoreStudents = async () => {
@@ -128,6 +127,15 @@ const StudentsPerformance = () => {
             : 0,
         totalExams: studentsData.reduce((sum, s) => sum + s.totalExamsSubmitted, 0)
     };
+
+    // 👇 Handle academy still loading
+    if (isLoaded && isSignedIn && !academy?.id) {
+        return (
+            <DashboardLayout>
+                <PerformanceSkeleton />
+            </DashboardLayout>
+        );
+    }
 
     if (loading) {
         return (
