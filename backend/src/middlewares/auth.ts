@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 
-import { verifyStudentToken } from '../utils/jwt';
+import { verifyStudentToken } from '../utils/jwt.js';
 
 // Extend Express Request type to include auth from Clerk and Student JWT
 declare global {

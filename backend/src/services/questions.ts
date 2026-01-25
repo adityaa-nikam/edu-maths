@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { questionsEasy, questionsMedium, questionsHard } from '../db/schema';
+import { db } from '../db/index.js';
+import { questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
 import { sql } from 'drizzle-orm';
 
 interface Question {

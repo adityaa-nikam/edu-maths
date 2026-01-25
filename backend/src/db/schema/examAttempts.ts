@@ -1,7 +1,7 @@
-import { pgTable, uuid, timestamp, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, integer, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { exams } from './exams';
-import { students } from './students';
+import { exams } from './exams.js';
+import { students } from './students.js';
 
 export const examAttempts = pgTable('exam_attempts', {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -10,6 +10,7 @@ export const examAttempts = pgTable('exam_attempts', {
     startedAt: timestamp('started_at').notNull(),
     submittedAt: timestamp('submitted_at'),
     score: integer('score'),
+    autoSubmitted: boolean('auto_submitted').default(false),
 }, (table) => {
     return {
         // Unique constraint: one attempt per student per exam

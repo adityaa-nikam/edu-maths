@@ -6,3 +6,4 @@ build/
 *.log
 .DS_Store
 coverage/
+PROMISE_ISSUE.md

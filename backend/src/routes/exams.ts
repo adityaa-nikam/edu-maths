@@ -1,9 +1,17 @@
 import { Router, Request, Response } from 'express';
-import { authenticateTeacher, authenticateStudent } from '../middlewares';
-import { db } from '../db';
-import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
-import { fetchRandomQuestions } from '../services/questions';
+import { authenticateTeacher, authenticateStudent } from '../middlewares/index.js';
+import { db } from '../db/index.js';
+import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
+import { eq, and, inArray, desc } from 'drizzle-orm';
+import { fetchRandomQuestions } from '../services/questions.js';
+import { getRedisClient, isRedisAvailable } from '../db/redis.js';
+import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey, getStudentExamResultKey } from '../utils/redisKeys.js';
+import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
+import { finalizeExamAttempt } from '../utils/examFinalization.js';
+import { cache } from '../utils/cache.js';
+import { logger } from '../utils/logger.js';
+import { checkRateLimit, getRateLimitErrorMessage } from '../utils/rateLimit.js';
+import { checkSubmitIdempotency, storeSubmitIdempotency } from '../utils/idempotency.js';
 
 const router = Router();
 
@@ -81,6 +89,27 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
                 createdAt: exams.createdAt,
             });
 
+        // 5. Invalidate exam list caches for this academy
+        const redis = getRedisClient();
+        if (redis && isRedisAvailable()) {
+            try {
+                // Invalidate public academy exams cache
+                const publicKey = getAcademyExamsKey(academy[0].slug);
+                await redis.del(publicKey);
+                console.log(`🗑️ Cache invalidated: ${publicKey}`);
+                
+                // Invalidate teacher dashboard exams cache (all pagination combos)
+                await cache.delPattern(`teacher:academy:${academyId}:exams:*`);
+                logger.info('Cache invalidated for teacher academy exams', {
+                    academyId,
+                    pattern: `teacher:academy:${academyId}:exams:*`,
+                });
+            } catch (redisError) {
+                console.error('Redis error (cache invalidation):', redisError);
+                // Don't fail the request if cache invalidation fails
+            }
+        }
+
         return res.status(201).json({
             message: 'Exam created successfully',
             exam: newExam[0],
@@ -99,6 +128,45 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
 router.get('/academy/:academySlug', async (req: Request, res: Response) => {
     try {
         const { academySlug } = req.params;
+        
+        // Parse pagination parameters
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
+
+        const redisKey = getAcademyExamsKey(academySlug);
+        const redis = getRedisClient();
+
+        // Try Redis cache first (if available)
+        if (redis && isRedisAvailable()) {
+            try {
+                const cached = await redis.get(redisKey);
+                if (cached) {
+                    console.log(`✅ Cache HIT: ${redisKey}`);
+                    const cachedData = JSON.parse(cached);
+                    
+                    // Apply pagination to cached data
+                    const startIdx = offset;
+                    const endIdx = offset + limit;
+                    const paginatedExams = cachedData.exams.slice(startIdx, endIdx);
+                    
+                    return res.status(200).json({
+                        academy: cachedData.academy,
+                        exams: paginatedExams,
+                        pagination: {
+                            currentPage: page,
+                            totalPages: Math.ceil(cachedData.exams.length / limit),
+                            totalItems: cachedData.exams.length,
+                            itemsPerPage: limit,
+                        },
+                    });
+                }
+                console.log(`❌ Cache MISS: ${redisKey}`);
+            } catch (redisError) {
+                console.error('Redis error (cache check):', redisError);
+                // Continue to database if Redis fails
+            }
+        }
 
         // 1. Find Academy by Slug
         const academy = await db
@@ -116,24 +184,55 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
 
         const targetAcademy = academy[0];
 
-        // 2. Fetch All Exams for this Academy
-        const academyExams = await db
+        // 2. Fetch All Exams (for cache - no pagination yet)
+        const allExams = await db
             .select({
                 id: exams.id,
                 title: exams.title,
                 difficulty: exams.difficulty,
                 startTime: exams.startTime,
                 endTime: exams.endTime,
+                createdAt: exams.createdAt,
             })
             .from(exams)
-            .where(eq(exams.academyId, targetAcademy.id));
+            .where(eq(exams.academyId, targetAcademy.id))
+            .orderBy(desc(exams.createdAt));
+
+        // Prepare data for caching (without pagination)
+        const cacheData = {
+            academy: {
+                name: targetAcademy.name,
+                slug: targetAcademy.slug,
+            },
+            exams: allExams,
+        };
+
+        // Store in Redis cache (if available) - 1 minute TTL
+        if (redis && isRedisAvailable()) {
+            try {
+                await redis.setex(redisKey, 60, JSON.stringify(cacheData));
+                console.log(`✅ Cached: ${redisKey} (TTL: 1 min)`);
+            } catch (redisError) {
+                console.error('Redis error (cache set):', redisError);
+                // Don't fail the request if caching fails
+            }
+        }
+
+        // 3. Apply pagination to response
+        const paginatedExams = allExams.slice(offset, offset + limit);
 
         return res.status(200).json({
             academy: {
                 name: targetAcademy.name,
                 slug: targetAcademy.slug,
             },
-            exams: academyExams,
+            exams: paginatedExams,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(allExams.length / limit),
+                totalItems: allExams.length,
+                itemsPerPage: limit,
+            },
         });
 
     } catch (error) {
@@ -149,7 +248,22 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
 router.get('/:examId/status', authenticateStudent, async (req: Request, res: Response) => {
     try {
         const { examId } = req.params;
+        const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // CACHE: Check if status is cached
+        const cacheKey = getStudentExamStatusKey(examId, studentId);
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam status', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
 
         // 1. Fetch Exam
         const exam = await db
@@ -190,14 +304,31 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             status = 'expired';
         }
 
-        return res.status(200).json({
+        // 4. Prepare Response
+        const responseData = {
             examId: targetExam.id,
             title: targetExam.title,
             difficulty: targetExam.difficulty,
+            durationMinutes: targetExam.durationMinutes,
+            totalQuestions: targetExam.totalQuestions,
             startTime: targetExam.startTime,
             endTime: targetExam.endTime,
             status,
+        };
+
+        // CACHE: Store the result for 10 seconds
+        await cache.set(cacheKey, responseData, 20);
+        
+        logger.info('Cache miss - exam status fetched from DB and cached', {
+            requestId: req.requestId,
+            examId,
+            studentId,
+            cacheKey,
+            status,
+            ttl: 10,
         });
+
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error checking exam status:', error);
@@ -210,12 +341,39 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
 
 // Start exam attempt
 router.post('/:examId/start', authenticateStudent, async (req: Request, res: Response) => {
-    try {
-        const { examId } = req.params;
-        const studentId = req.studentId!;
-        const studentAcademyId = req.academyId!;
+    const { examId } = req.params;
+    const studentId = req.studentId!;
+    const studentAcademyId = req.academyId!;
+    
+    const lockKey = getExamStartLockKey(examId, studentId);
+    const redis = getRedisClient();
+    let lockAcquired = false;
 
-        // 1. Verify Exam Exists
+    try {
+        // 1. Acquire Redis lock (if available) to prevent concurrent attempts
+        if (redis && isRedisAvailable()) {
+            try {
+                // SET NX (set if not exists) with 10 second expiry
+                const lockResult = await redis.set(lockKey, '1', 'EX', 10, 'NX');
+                
+                if (!lockResult) {
+                    // Lock already exists - another request is processing
+                    console.log(`🔒 Lock conflict: ${lockKey}`);
+                    return res.status(409).json({
+                        error: 'Conflict',
+                        message: 'An exam start request is already being processed. Please wait and try again.',
+                    });
+                }
+                
+                lockAcquired = true;
+                console.log(`🔓 Lock acquired: ${lockKey}`);
+            } catch (redisError) {
+                console.error('Redis error (lock acquisition):', redisError);
+                // Continue without lock if Redis fails (DB constraint is final guard)
+            }
+        }
+
+        // 2. Verify Exam Exists
         const exam = await db
             .select()
             .from(exams)
@@ -231,7 +389,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 
         const targetExam = exam[0];
 
-        // 2. Verify Exam Belongs to Student's Academy
+        // 3. Verify Exam Belongs to Student's Academy
         if (targetExam.academyId !== studentAcademyId) {
             return res.status(403).json({
                 error: 'Forbidden',
@@ -239,7 +397,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 3. Verify Exam is Active (current time within window)
+        // 4. Verify Exam is Active (current time within window)
         const now = new Date();
         const startTime = new Date(targetExam.startTime);
         const endTime = new Date(targetExam.endTime);
@@ -258,7 +416,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 4. Verify Student Has Not Attempted Exam Before
+        // 5. Verify Student Has Not Attempted Exam Before (DB is final authority)
         const existingAttempt = await db
             .select()
             .from(examAttempts)
@@ -275,13 +433,13 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 5. Fetch Random Questions and Lock Them
+        // 6. Fetch Random Questions and Lock Them
         const randomQuestions = await fetchRandomQuestions(
             targetExam.difficulty,
             targetExam.totalQuestions
         );
 
-        // 6. Create Exam Attempt Entry
+        // 7. Create Exam Attempt Entry
         const newAttempt = await db
             .insert(examAttempts)
             .values({
@@ -296,7 +454,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 
         const attemptId = newAttempt[0].id;
 
-        // 7. Pre-create exam_answers rows to lock questions
+        // 8. Pre-create exam_answers rows to lock questions
         // This ensures the student always gets the same questions for this attempt
         const examAnswerRows = randomQuestions.map(q => ({
             attemptId,
@@ -307,7 +465,17 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
 
         await db.insert(examAnswers).values(examAnswerRows);
 
-        // 8. Return Attempt Details
+        // 9. Set attempt as active in Redis (expires at global exam end time)
+        await setExamAttemptActive(attemptId, targetExam.endTime);
+
+        // 10. Invalidate student exam status cache (status changed from not_started to active)
+        await cache.del(`student:exam:${examId}:student:${studentId}:status`);
+        logger.info('Cache invalidated for student exam status after start', {
+            examId,
+            studentId,
+        });
+
+        // 11. Return Attempt Details
         return res.status(201).json({
             message: 'Exam attempt started successfully',
             attemptId,
@@ -321,6 +489,17 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             error: 'Internal Server Error',
             message: 'Failed to start exam attempt',
         });
+    } finally {
+        // 12. Release lock (if acquired)
+        if (lockAcquired && redis && isRedisAvailable()) {
+            try {
+                await redis.del(lockKey);
+                console.log(`🔓 Lock released: ${lockKey}`);
+            } catch (redisError) {
+                console.error('Redis error (lock release):', redisError);
+                // Lock will auto-expire in 10 seconds anyway
+            }
+        }
     }
 });
 
@@ -330,6 +509,20 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
         const { examId } = req.params;
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // CACHE: Check if questions are cached
+        const cacheKey = getStudentExamQuestionsKey(examId, studentId);
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam questions', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
 
         // 1. Fetch Exam
         const exam = await db
@@ -439,15 +632,37 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
             .from(table)
             .where(inArray(table.id, questionIds));
 
-        return res.status(200).json({
+        // 7. Prepare Response
+        const responseData = {
             examId: targetExam.id,
             title: targetExam.title,
             difficulty: targetExam.difficulty,
             totalQuestions: targetExam.totalQuestions,
             durationMinutes: targetExam.durationMinutes,
             attemptId,
+            startedAt: attempt[0].startedAt,
             questions,
-        });
+        };
+
+        // CACHE: Calculate dynamic TTL until exam end time
+        const ttlSeconds = Math.floor((endTime.getTime() - now.getTime()) / 1000);
+        
+        // Only cache if there's time remaining (should always be true here due to earlier check)
+        if (ttlSeconds > 0) {
+            await cache.set(cacheKey, responseData, ttlSeconds);
+            
+            logger.info('Cache miss - exam questions fetched from DB and cached', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                attemptId,
+                cacheKey,
+                ttl: ttlSeconds,
+                examEndTime: endTime.toISOString(),
+            });
+        }
+
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error fetching exam questions:', error);
@@ -465,6 +680,17 @@ router.post('/:examId/answer', authenticateStudent, async (req: Request, res: Re
         const { questionId, selectedOption } = req.body;
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // 0. Rate Limit Check (Per Student Per Exam)
+        const rateLimitResult = await checkRateLimit('answer', examId, studentId);
+        if (!rateLimitResult.allowed) {
+            return res.status(429).json({
+                error: 'Too Many Requests',
+                message: getRateLimitErrorMessage('answer', rateLimitResult.resetAt),
+                limit: rateLimitResult.limit,
+                remaining: rateLimitResult.remaining,
+            });
+        }
 
         // 1. Validate Input
         if (!questionId || selectedOption === undefined || selectedOption === null) {
@@ -531,15 +757,20 @@ router.post('/:examId/answer', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 5. Check if Exam Duration Has Expired
-        const now = new Date();
-        const startedAt = new Date(attemptData.startedAt);
-        const expiryTime = new Date(startedAt.getTime() + targetExam.durationMinutes * 60 * 1000);
+        // 5. Centralized Timing Enforcement: Check if attempt is still active
+        // Uses Redis for fast check, falls back to DB if Redis unavailable
+        const isActive = await isExamAttemptActive(attemptData.id);
+        
+        if (!isActive) {
+            // AUTO-SUBMIT TRIGGER: If time expired and not yet submitted, finalize the exam
+            if (attemptData.submittedAt === null) {
+                console.log(`🔄 Auto-submit triggered for attempt ${attemptData.id} (answer request after expiry)`);
+                await finalizeExamAttempt(attemptData.id, true);
+            }
 
-        if (now > expiryTime) {
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'Exam time has expired. Please submit the exam.',
+                message: 'Exam time has expired. Your exam has been automatically submitted.',
             });
         }
 
@@ -593,6 +824,17 @@ router.post('/:examId/answers', authenticateStudent, async (req: Request, res: R
         const { answers } = req.body;
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // 0. Rate Limit Check (Per Student Per Exam)
+        const rateLimitResult = await checkRateLimit('answer', examId, studentId);
+        if (!rateLimitResult.allowed) {
+            return res.status(429).json({
+                error: 'Too Many Requests',
+                message: getRateLimitErrorMessage('answer', rateLimitResult.resetAt),
+                limit: rateLimitResult.limit,
+                remaining: rateLimitResult.remaining,
+            });
+        }
 
         // 1. Validate Input
         if (!answers || !Array.isArray(answers) || answers.length === 0) {
@@ -668,15 +910,20 @@ router.post('/:examId/answers', authenticateStudent, async (req: Request, res: R
             });
         }
 
-        // 5. Check if Exam Duration Has Expired
-        const now = new Date();
-        const startedAt = new Date(attemptData.startedAt);
-        const expiryTime = new Date(startedAt.getTime() + targetExam.durationMinutes * 60 * 1000);
+        // 5. Centralized Timing Enforcement: Check if attempt is still active
+        // Uses Redis for fast check, falls back to DB if Redis unavailable
+        const isActive = await isExamAttemptActive(attemptData.id);
+        
+        if (!isActive) {
+            // AUTO-SUBMIT TRIGGER: If time expired and not yet submitted, finalize the exam
+            if (attemptData.submittedAt === null) {
+                console.log(`🔄 Auto-submit triggered for attempt ${attemptData.id} (batch answers request after expiry)`);
+                await finalizeExamAttempt(attemptData.id, true);
+            }
 
-        if (now > expiryTime) {
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'Exam time has expired. Please submit the exam.',
+                message: 'Exam time has expired. Your exam has been automatically submitted.',
             });
         }
 
@@ -737,7 +984,24 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
 
-        // 1. Verify Exam Exists and Belongs to Student's Academy
+        // 0. Idempotency Check - Return cached result if this submission was already processed
+        const cachedResult = await checkSubmitIdempotency(examId, studentId);
+        if (cachedResult) {
+            return res.status(200).json(cachedResult);
+        }
+
+        // 1. Rate Limit Check (Per Student Per Exam)
+        const rateLimitResult = await checkRateLimit('submit', examId, studentId);
+        if (!rateLimitResult.allowed) {
+            return res.status(429).json({
+                error: 'Too Many Requests',
+                message: getRateLimitErrorMessage('submit', rateLimitResult.resetAt),
+                limit: rateLimitResult.limit,
+                remaining: rateLimitResult.remaining,
+            });
+        }
+
+        // 2. Verify Exam Exists and Belongs to Student's Academy
         const exam = await db
             .select()
             .from(exams)
@@ -760,7 +1024,7 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 2. Verify Attempt Exists
+        // 3. Verify Attempt Exists
         const attempt = await db
             .select()
             .from(examAttempts)
@@ -779,7 +1043,7 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
 
         const attemptData = attempt[0];
 
-        // 3. Verify Not Already Submitted
+        // 4. Verify Not Already Submitted
         if (attemptData.submittedAt !== null) {
             return res.status(400).json({
                 error: 'Bad Request',
@@ -787,100 +1051,65 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
             });
         }
 
-        // 4. Check if Exam Duration Has Expired (Auto-submit logic)
-        const now = new Date();
-        const startedAt = new Date(attemptData.startedAt);
-        const expiryTime = new Date(startedAt.getTime() + targetExam.durationMinutes * 60 * 1000);
-        const isExpired = now > expiryTime;
+        // 5. Centralized Timing Enforcement: Check if attempt is still active
+        // Uses Redis for fast check, falls back to DB if Redis unavailable
+        // This determines if submission is auto-submit (expired) or manual
+        const isActive = await isExamAttemptActive(attemptData.id);
+        const isExpired = !isActive;
 
-        // 5. Fetch All Student's Answers
-        const studentAnswers = await db
-            .select()
-            .from(examAnswers)
-            .where(eq(examAnswers.attemptId, attemptData.id));
+        // 6. Finalize Exam Attempt (Shared Logic for Manual and Auto-Submit)
+        const result = await finalizeExamAttempt(attemptData.id, isExpired);
 
-        if (studentAnswers.length === 0) {
+        if (!result.success) {
             return res.status(500).json({
                 error: 'Internal Server Error',
-                message: 'No answers found for this attempt',
+                message: result.error || 'Failed to submit exam',
             });
         }
 
-        // 5. Fetch Correct Answers from Question Bank
-        const questionIds = studentAnswers.map(a => a.questionId);
-
-        // Select the appropriate table based on difficulty
-        let table;
-        switch (targetExam.difficulty) {
-            case 'easy':
-                table = questionsEasy;
-                break;
-            case 'medium':
-                table = questionsMedium;
-                break;
-            case 'hard':
-                table = questionsHard;
-                break;
-            default:
-                return res.status(500).json({
-                    error: 'Internal Server Error',
-                    message: 'Invalid difficulty level',
-                });
+        // If attempt was already submitted by concurrent request, return existing result
+        if (result.alreadySubmitted) {
+            const response = {
+                message: 'Exam already submitted',
+                score: result.score!,
+                totalQuestions: result.totalQuestions!,
+                percentage: result.percentage!,
+                submittedAt: result.submittedAt!,
+                autoSubmitted: result.autoSubmitted!,
+            };
+            
+            // Store in Redis for future duplicate requests
+            await storeSubmitIdempotency(examId, studentId, response);
+            
+            return res.status(200).json(response);
         }
 
-        const correctAnswers = await db
-            .select({
-                id: table.id,
-                correctOption: table.correctOption,
-            })
-            .from(table)
-            .where(inArray(table.id, questionIds));
-
-        // Create a map for quick lookup
-        const correctAnswersMap = new Map(
-            correctAnswers.map(q => [q.id, q.correctOption])
-        );
-
-        // 6. Evaluate Answers and Calculate Score
-        let score = 0;
-        for (const answer of studentAnswers) {
-            const correctOption = correctAnswersMap.get(answer.questionId);
-
-            if (correctOption !== undefined) {
-                const isCorrect = answer.selectedOption === correctOption;
-
-                // Update the isCorrect field
-                await db
-                    .update(examAnswers)
-                    .set({
-                        isCorrect,
-                    })
-                    .where(eq(examAnswers.id, answer.id));
-
-                if (isCorrect) {
-                    score++;
-                }
-            }
-        }
-
-        // 7. Update Exam Attempt with Score and Submission Time
-        await db
-            .update(examAttempts)
-            .set({
-                score,
-                submittedAt: now,
-            })
-            .where(eq(examAttempts.id, attemptData.id));
-
-        // 8. Return Results
-        return res.status(200).json({
+        // 7. Prepare response
+        const response = {
             message: isExpired ? 'Exam auto-submitted (time expired)' : 'Exam submitted successfully',
-            score,
-            totalQuestions: studentAnswers.length,
-            percentage: Math.round((score / studentAnswers.length) * 100),
-            submittedAt: now,
-            autoSubmitted: isExpired,
+            score: result.score!,
+            totalQuestions: result.totalQuestions!,
+            percentage: result.percentage!,
+            submittedAt: result.submittedAt!,
+            autoSubmitted: result.autoSubmitted!,
+        };
+
+        // 8. Store result in Redis for idempotency (10-minute window)
+        await storeSubmitIdempotency(examId, studentId, response);
+
+        // 9. Invalidate related caches after successful submission
+        await cache.delPattern(`teacher:exam:${examId}:summary*`);
+        await cache.delPattern(`teacher:exam:${examId}:attempts:*`);
+        await cache.del(`student:exam:${examId}:student:${studentId}:status`);
+        await cache.del(`student:exam:${examId}:student:${studentId}:questions`);
+        logger.info('Cache invalidated after exam submission', {
+            examId,
+            studentId,
+            patterns: ['exam summary', 'exam attempts', 'student status', 'student questions'],
         });
+
+        // 10. Return Results
+        return res.status(200).json(response);
 
     } catch (error) {
         console.error('Error submitting exam:', error);
@@ -897,6 +1126,20 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
         const { examId } = req.params;
         const studentId = req.studentId!;
         const studentAcademyId = req.academyId!;
+
+        // CACHE: Check if result is cached
+        const cacheKey = getStudentExamResultKey(examId, studentId);
+        const cachedData = await cache.get<any>(cacheKey);
+        
+        if (cachedData) {
+            logger.info('Cache hit for exam result', {
+                requestId: req.requestId,
+                examId,
+                studentId,
+                cacheKey,
+            });
+            return res.status(200).json(cachedData);
+        }
 
         // 1. Verify Exam Exists and Belongs to Student's Academy
         const exam = await db
@@ -952,13 +1195,31 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
             .from(examAnswers)
             .where(eq(examAnswers.attemptId, attemptData.id));
 
-        // 5. Return Result
-        return res.status(200).json({
+        // 5. Prepare Response
+        const responseData = {
             score: attemptData.score,
             totalQuestions: totalQuestions.length,
             percentage: Math.round((attemptData.score! / totalQuestions.length) * 100),
             submittedAt: attemptData.submittedAt,
+            attemptId: attemptData.id,
+            startedAt: attemptData.startedAt,
+            durationMinutes: exam[0].durationMinutes,
+        };
+
+        // CACHE: Store the result for 5 minutes (results are immutable after submission)
+        await cache.set(cacheKey, responseData, 300);
+        
+        logger.info('Cache miss - exam result fetched from DB and cached', {
+            requestId: req.requestId,
+            examId,
+            studentId,
+            attemptId: attemptData.id,
+            cacheKey,
+            ttl: 300,
         });
+
+        // 6. Return Result
+        return res.status(200).json(responseData);
 
     } catch (error) {
         console.error('Error fetching exam result:', error);
