@@ -3,6 +3,8 @@ import app from './app.js';
 import { testConnection } from './db/index.js';
 import { getRedisClient } from './db/redis.js';
 import healthJob from './utils/cron.js';
+import "./utils/autoSubmitExams.js";
+
 
 
 const PORT = process.env.PORT || 3000;
