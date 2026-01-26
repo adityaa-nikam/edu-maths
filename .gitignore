@@ -1,0 +1,13 @@
+load-tests/*
+postman/*
+PAGINATION.md
+.env
+ARCHITECTURE.md
+backend/REDIS_PHASE1_SETUP.md
+backend/REDIS_R2.2_ATTEMPT_ACTIVE_STATE.md
+k6/test-rate-limit-parallel.js
+k6/test-rate-limit-parallel.ps1
+backend/scripts/test-rate-limit-parallel.js
+k6/test-rate-limit.k6.js
+backend/scripts/test-submit-idempotency.js
+backend/CACHE_IMPLEMENTATION_PLAN.md

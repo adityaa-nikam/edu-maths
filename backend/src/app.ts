@@ -1,9 +1,15 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { clerkMiddleware } from '@clerk/express';
-import authRoutes from './routes/auth';
-import academyRoutes from './routes/academy';
-import studentRoutes from './routes/students';
+import authRoutes from './routes/auth.js';
+import academyRoutes from './routes/academy.js';
+import studentRoutes from './routes/students.js';
+import examRoutes from './routes/exams.js';
+import teacherRoutes from './routes/teacher.js';
+import healthRoutes from './routes/health.js';
+import { requestIdMiddleware } from './middlewares/requestId.js';
+import { isRedisAvailable } from './db/redis.js';
+import { testConnection } from './db/index.js';
 
 const app = express();
 
@@ -23,21 +29,18 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Request ID middleware for correlation
+app.use(requestIdMiddleware);
+
 // Clerk middleware - handles JWT verification
 app.use(clerkMiddleware());
 
-// Health check route
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    message: 'Server is running',
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Routes
+app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/academy', academyRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api/exams', examRoutes);
+app.use('/api/teacher', teacherRoutes);
 
 export default app;
