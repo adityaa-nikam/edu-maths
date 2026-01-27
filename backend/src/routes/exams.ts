@@ -289,7 +289,28 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             });
         }
 
-        // 3. Determine Exam Status
+        // 3. Check if student has already attempted this exam
+        const existingAttempt = await db
+            .select()
+            .from(examAttempts)
+            .where(and(
+                eq(examAttempts.examId, examId),
+                eq(examAttempts.studentId, studentId)
+            ))
+            .limit(1);
+
+        let attemptStatus: 'not_attempted' | 'in_progress' | 'submitted' = 'not_attempted';
+        
+        if (existingAttempt.length > 0) {
+            const attempt = existingAttempt[0];
+            if (attempt.submittedAt !== null) {
+                attemptStatus = 'submitted';
+            } else {
+                attemptStatus = 'in_progress';
+            }
+        }
+
+        // 4. Determine Exam Status (timing)
         const now = new Date();
         const startTime = new Date(targetExam.startTime);
         const endTime = new Date(targetExam.endTime);
@@ -304,7 +325,7 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             status = 'expired';
         }
 
-        // 4. Prepare Response
+        // 5. Prepare Response
         const responseData = {
             examId: targetExam.id,
             title: targetExam.title,
@@ -313,7 +334,13 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             totalQuestions: targetExam.totalQuestions,
             startTime: targetExam.startTime,
             endTime: targetExam.endTime,
-            status,
+            status, // Exam timing status
+            attemptStatus, // NEW: Student's attempt status
+            // Include score if submitted
+            ...(attemptStatus === 'submitted' && existingAttempt[0].score !== null ? {
+                score: existingAttempt[0].score,
+                submittedAt: existingAttempt[0].submittedAt
+            } : {})
         };
 
         // CACHE: Store the result for 10 seconds
@@ -325,6 +352,7 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             studentId,
             cacheKey,
             status,
+            attemptStatus,
             ttl: 10,
         });
 

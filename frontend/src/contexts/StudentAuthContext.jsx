@@ -8,6 +8,7 @@ import {
   checkStudentTokenExpiration 
 } from '../utils/tokenStorage';
 import { studentAPI } from '../services/api';
+import { clearAllExamCaches } from '../utils/examStorage';
 
 // Create context
 const StudentAuthContext = createContext(null);
@@ -103,7 +104,9 @@ export const StudentAuthProvider = ({ children }) => {
    */
   const logout = () => {
     clearStudentData();
+    clearAllExamCaches(); // Clear all exam answer caches
     setStudent(null);
+    console.log('[Exam Storage] Cleared all exam caches on logout');
   };
 
   /**

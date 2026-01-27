@@ -5,6 +5,14 @@ import { studentAPI, examAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { showSuccess, showError } from '../utils/notifications';
 import ThemeToggle from '../components/ThemeToggle/ThemeToggle';
+import {
+    saveAnswerToCache,
+    loadAnswersFromCache,
+    getSimpleAnswers,
+    clearExamCache,
+    mergeWithServerAnswers,
+    getAnsweredCount
+} from '../utils/examStorage';
 
 const ExamPage = () => {
     const { academySlug, examId } = useParams();
@@ -50,6 +58,7 @@ const ExamPage = () => {
 
                 // Get exam info WITHOUT starting
                 const info = await examAPI.getStatus(examId);
+                console.log("[⚠️Exam Page]:exam info",info)
 
                 setExam(info);
 
@@ -111,16 +120,28 @@ const ExamPage = () => {
                 serverStartTime: questionsData.startedAt
             });
 
+            // Load answers from localStorage first
+            const cachedAnswers = getSimpleAnswers(examId);
+
             // Initialize answers from backend
-            const initialAnswers = {};
+            const serverAnswers = {};
             if (questionsData.questions) {
                 questionsData.questions.forEach(q => {
                     if (q.selectedOption && q.selectedOption > 0) {
-                        initialAnswers[q.id] = q.selectedOption;
+                        serverAnswers[q.id] = q.selectedOption;
                     }
                 });
             }
-            setAnswers(initialAnswers);
+
+            // Merge: server answers take precedence, cache fills gaps
+            const mergedAnswers = mergeWithServerAnswers(examId, serverAnswers);
+            setAnswers(mergedAnswers);
+
+            console.log('[Exam Storage] Loaded answers:', {
+                cached: Object.keys(cachedAnswers).length,
+                server: Object.keys(serverAnswers).length,
+                merged: Object.keys(mergedAnswers).length
+            });
 
             // Start timer
             if (questionsData.durationMinutes && questionsData.startedAt) {
@@ -150,7 +171,8 @@ const ExamPage = () => {
             const questionsData = await examAPI.getQuestions(examId);
             setQuestions(questionsData.questions || []);
 
-            // Initialize empty answers
+            // Initialize empty answers and clear any old cache
+            clearExamCache(examId);
             setAnswers({});
 
             // Start timer
@@ -211,15 +233,23 @@ const ExamPage = () => {
 
     // 5️⃣ Answer Saving - Single Answer Autosave
     const handleAnswerChange = async (questionId, selectedOption) => {
+        // 1. Update React state immediately
         setAnswers(prev => ({
             ...prev,
             [questionId]: selectedOption
         }));
 
+        // 2. Save to localStorage immediately (instant)
+        saveAnswerToCache(examId, questionId, selectedOption);
+        console.log(`[Exam Storage] Saved answer for question ${questionId}: ${selectedOption}`);
+
+        // 3. Save to server (background)
         try {
             await examAPI.saveAnswer(examId, { questionId, selectedOption });
+            console.log(`[Server] Saved answer for question ${questionId}`);
         } catch (err) {
-            console.error('Error saving answer:', err);
+            console.error('Error saving answer to server:', err);
+            // Answer is still in localStorage, will be synced later
         }
     };
 
@@ -278,6 +308,10 @@ const ExamPage = () => {
             await batchSaveAnswers();
             await examAPI.submit(examId);
 
+            // Clear localStorage after successful submission
+            clearExamCache(examId);
+            console.log('[Exam Storage] Cleared cache after submission');
+
             // DON'T redirect - change phase to AFTER
             setExamPhase('after');
 
@@ -307,6 +341,10 @@ const ExamPage = () => {
         try {
             await batchSaveAnswers();
             await examAPI.submit(examId);
+
+            // Clear localStorage after successful submission
+            clearExamCache(examId);
+            console.log('[Exam Storage] Cleared cache after submission');
 
             // DON'T redirect - change phase to AFTER
             setExamPhase('after');
