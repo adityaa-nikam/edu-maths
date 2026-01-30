@@ -2,7 +2,7 @@ import { CronJob } from 'cron';
 import https from 'https';
 import http from 'http';
 
-const job = new CronJob('*/14 * * * *', function () {
+const job = new CronJob('*/1 * * * *', function () {
     // Detect if running on Render
     const isRender = process.env.RENDER === 'true';
     
