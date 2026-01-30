@@ -20,7 +20,8 @@ export const getDb = () => {
     clientInstance = postgres(connectionString, {
       max: 10, // Maximum 10 connections per instance
       idle_timeout: 20, // Close idle connections after 20 seconds
-      connect_timeout: 10, // Connection timeout
+      connect_timeout: 30, // Increased connection timeout for Render/Supabase
+      max_lifetime: 60 * 30, // 30 minutes max connection lifetime
     });
     dbInstance = drizzle(clientInstance);
   }
