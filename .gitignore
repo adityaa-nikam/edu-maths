@@ -11,3 +11,9 @@ backend/scripts/test-rate-limit-parallel.js
 k6/test-rate-limit.k6.js
 backend/scripts/test-submit-idempotency.js
 backend/CACHE_IMPLEMENTATION_PLAN.md
+node_modules
+package-lock.json
+package.json
+k6
+load-tests
+postman
