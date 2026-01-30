@@ -40,7 +40,7 @@ const autoSubmitJob = new CronJob(
         await finalizeExamAttempt(attempt.attemptId, true);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       logger.error("Auto-submit cron failed", error);
     }
   },
