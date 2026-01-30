@@ -7,8 +7,9 @@ const job = new CronJob('*/1 * * * *', function () {
     const isRender = process.env.RENDER === 'true';
     
     // Use external URL on Render, localhost locally
+    // RENDER_EXTERNAL_URL already includes https://, so don't add it
     const url = isRender 
-        ? `https://${process.env.RENDER_EXTERNAL_URL || 'edu-maths-dev.onrender.com'}`
+        ? process.env.RENDER_EXTERNAL_URL || 'https://edu-maths-dev.onrender.com'
         : 'http://localhost:3000';
 
     const healthUrl = `${url}/api/health`;
