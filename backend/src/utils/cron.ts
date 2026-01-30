@@ -12,7 +12,7 @@ const job = new CronJob('*/14 * * * *', function () {
     }
 
     // Construct health check URL
-    const healthUrl = url.endsWith('/') ? `${url}health` : `${url}/health`;
+    const healthUrl = url.endsWith('/') ? `${url}api/health` : `${url}/api/health`;
     const protocol = healthUrl.startsWith('https') ? https : http;
 
     console.log(`⏰ Keep-alive: Pinging ${healthUrl}...`);
