@@ -1,4 +1,7 @@
 import 'dotenv/config'; // Must be first!
+import AgentAPI from 'apminsight';
+AgentAPI.config();
+
 import app from './app.js';
 import { testConnection } from './db/index.js';
 import { getRedisClient } from './db/redis.js';
