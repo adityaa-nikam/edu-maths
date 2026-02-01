@@ -5,7 +5,7 @@ import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMe
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
 import { getRedisClient, isRedisAvailable } from '../db/redis.js';
-import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey, getStudentExamResultKey } from '../utils/redisKeys.js';
+import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey, getStudentExamResultKey, getTeacherAcademyDashboardKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 import { finalizeExamAttempt } from '../utils/examFinalization.js';
 import { cache } from '../utils/cache.js';
@@ -100,9 +100,11 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
                 
                 // Invalidate teacher dashboard exams cache (all pagination combos)
                 await cache.delPattern(`teacher:academy:${academyId}:exams:*`);
-                logger.info('Cache invalidated for teacher academy exams', {
+                // Invalidate dashboard stats cache (exam count changed)
+                await cache.del(getTeacherAcademyDashboardKey(academyId));
+                logger.info('Cache invalidated for teacher academy exams and dashboard', {
                     academyId,
-                    pattern: `teacher:academy:${academyId}:exams:*`,
+                    patterns: [`teacher:academy:${academyId}:exams:*`, `teacher:academy:${academyId}:dashboard`],
                 });
             } catch (redisError) {
                 console.error('Redis error (cache invalidation):', redisError);
@@ -1130,10 +1132,13 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
         await cache.delPattern(`teacher:exam:${examId}:attempts:*`);
         await cache.del(`student:exam:${examId}:student:${studentId}:status`);
         await cache.del(`student:exam:${examId}:student:${studentId}:questions`);
+        // Invalidate dashboard stats cache (totalResults changed)
+        await cache.del(getTeacherAcademyDashboardKey(targetExam.academyId));
         logger.info('Cache invalidated after exam submission', {
             examId,
             studentId,
-            patterns: ['exam summary', 'exam attempts', 'student status', 'student questions'],
+            academyId: targetExam.academyId,
+            patterns: ['exam summary', 'exam attempts', 'student status', 'student questions', 'academy dashboard'],
         });
 
         // 10. Return Results

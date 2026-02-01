@@ -2,9 +2,9 @@ import { Router, Request, Response } from 'express';
 import { authenticateTeacher } from '../middlewares/index.js';
 import { db } from '../db/index.js';
 import { exams, academies, examAttempts, students, examAnswers, questionsEasy, questionsMedium, questionsHard } from '../db/schema/index.js';
-import { eq, and, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, sql, count } from 'drizzle-orm';
 import { cache } from '../utils/cache.js';
-import { getTeacherAcademyExamsKey, getTeacherAcademyStudentsKey, getTeacherAcademyInfoKey, getTeacherExamSummaryKey, getTeacherExamAttemptsKey } from '../utils/redisKeys.js';
+import { getTeacherAcademyExamsKey, getTeacherAcademyStudentsKey, getTeacherAcademyInfoKey, getTeacherExamSummaryKey, getTeacherExamAttemptsKey, getTeacherAcademyDashboardKey } from '../utils/redisKeys.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -548,6 +548,10 @@ router.get('/academy/students', authenticateTeacher, async (req: Request, res: R
         let teacherAcademy = await cache.get<any>(academyInfoKey);
         
         if (!teacherAcademy) {
+            logger.debug('Academy info not found in cache, querying DB', {
+                requestId: req.requestId,
+                clerkUserId,
+            });
             const academy = await db
                 .select()
                 .from(academies)
@@ -570,6 +574,13 @@ router.get('/academy/students', authenticateTeacher, async (req: Request, res: R
                 academyId: teacherAcademy.id,
             });
         }
+
+        logger.debug('Fetching students for teacher academy', {
+            requestId: req.requestId,
+            academyId: teacherAcademy.id,
+            page,
+            limit,
+        });
 
         // CACHE: Check if data is cached (with pagination in key)
         const cacheKey = `${getTeacherAcademyStudentsKey(teacherAcademy.id)}:page:${page}:limit:${limit}`;
@@ -974,10 +985,12 @@ router.delete('/students/:studentId', authenticateTeacher, async (req: Request, 
 
         // 5. Invalidate teacher academy students cache (all pagination combos)
         await cache.delPattern(`teacher:academy:${targetStudent.academyId}:students:*`);
-        logger.info('Cache invalidated for teacher academy students after deletion', {
+        // Invalidate dashboard cache (student count changed)
+        await cache.del(getTeacherAcademyDashboardKey(targetStudent.academyId));
+        logger.info('Cache invalidated for teacher academy students and dashboard after deletion', {
             academyId: targetStudent.academyId,
             studentId,
-            pattern: `teacher:academy:${targetStudent.academyId}:students:*`,
+            patterns: [`teacher:academy:${targetStudent.academyId}:students:*`, `teacher:academy:${targetStudent.academyId}:dashboard`],
         });
 
         return res.status(200).json({
@@ -994,6 +1007,127 @@ router.delete('/students/:studentId', authenticateTeacher, async (req: Request, 
         return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to delete student',
+        });
+    }
+});
+
+// ============================================
+// DASHBOARD STATISTICS ENDPOINT (OPTIMIZED)
+// ============================================
+// Returns ONLY total counts - NO paginated lists
+// Uses COUNT(*) queries for performance
+// Cached to avoid repeated DB hits
+router.get('/academy/dashboard', authenticateTeacher, async (req: Request, res: Response) => {
+    try {
+        const clerkUserId = req.clerkUserId!;
+
+        // 1. Get Teacher's Academy (with caching - reusing existing pattern)
+        const academyInfoKey = getTeacherAcademyInfoKey(clerkUserId);
+        let teacherAcademy = await cache.get<any>(academyInfoKey);
+        
+        if (!teacherAcademy) {
+            logger.debug('Academy info not found in cache, querying DB', {
+                requestId: req.requestId,
+                clerkUserId,
+            });
+            const academy = await db
+                .select()
+                .from(academies)
+                .where(eq(academies.clerkUserId, clerkUserId))
+                .limit(1);
+
+            if (academy.length === 0) {
+                return res.status(404).json({
+                    error: 'Not Found',
+                    message: 'No academy found for this teacher',
+                });
+            }
+
+            teacherAcademy = academy[0];
+            // Cache academy info for 5 minutes
+            await cache.set(academyInfoKey, teacherAcademy, 300);
+            logger.info('Academy info cached', {
+                requestId: req.requestId,
+                clerkUserId,
+                academyId: teacherAcademy.id,
+            });
+        }
+
+        // 2. Check dashboard cache first
+        const dashboardCacheKey = getTeacherAcademyDashboardKey(teacherAcademy.id);
+        const cachedDashboard = await cache.get<any>(dashboardCacheKey);
+        
+        if (cachedDashboard) {
+            logger.info('Cache hit for teacher academy dashboard', {
+                requestId: req.requestId,
+                academyId: teacherAcademy.id,
+                cacheKey: dashboardCacheKey,
+            });
+            return res.status(200).json(cachedDashboard);
+        }
+
+        // 3. Fetch counts using optimized COUNT(*) queries (sequential, not parallel)
+        
+        // Count total students for the academy
+        const studentsCountResult = await db
+            .select({ count: count() })
+            .from(students)
+            .where(eq(students.academyId, teacherAcademy.id));
+        const totalStudents = studentsCountResult[0]?.count ?? 0;
+
+        // Count total exams for the academy
+        const examsCountResult = await db
+            .select({ count: count() })
+            .from(exams)
+            .where(eq(exams.academyId, teacherAcademy.id));
+        const totalExams = examsCountResult[0]?.count ?? 0;
+
+        // Count total results/responses (exam attempts with submittedAt not null)
+        // This counts submitted exam attempts for all exams in this academy
+        const resultsCountResult = await db
+            .select({ count: count() })
+            .from(examAttempts)
+            .innerJoin(exams, eq(examAttempts.examId, exams.id))
+            .where(
+                and(
+                    eq(exams.academyId, teacherAcademy.id),
+                    sql`${examAttempts.submittedAt} IS NOT NULL`
+                )
+            );
+        const totalResults = resultsCountResult[0]?.count ?? 0;
+
+        // 4. Prepare response data
+        const dashboardData = {
+            academyId: teacherAcademy.id,
+            academyName: teacherAcademy.name,
+            totalStudents: Number(totalStudents),
+            totalExams: Number(totalExams),
+            totalResults: Number(totalResults),
+        };
+
+        // 5. Cache the dashboard data for 60 seconds
+        await cache.set(dashboardCacheKey, dashboardData, 60);
+        
+        logger.info('Cache miss - dashboard data fetched from DB and cached', {
+            requestId: req.requestId,
+            academyId: teacherAcademy.id,
+            cacheKey: dashboardCacheKey,
+            ttl: 60,
+            stats: {
+                totalStudents: dashboardData.totalStudents,
+                totalExams: dashboardData.totalExams,
+                totalResults: dashboardData.totalResults,
+            },
+        });
+
+        // 6. Return dashboard statistics
+        return res.status(200).json(dashboardData);
+
+    } catch (error) {
+        console.error('Error fetching academy dashboard:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch academy dashboard',
         });
     }
 });

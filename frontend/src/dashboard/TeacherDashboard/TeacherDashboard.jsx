@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { teacherAPI } from '../../services/api';
@@ -14,32 +14,64 @@ const TeacherDashboard = () => {
   const { teacher, academy } = useAuth();
 
   const [exams, setExams] = useState([]);
-  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Dashboard stats - fetched from dedicated optimized API
+  const [dashboardStats, setDashboardStats] = useState({
+    totalStudents: 0,
+    totalExams: 0,
+    totalResults: 0,
+  });
+  
+  // Ref to track if dashboard stats have been fetched (prevents refetch on re-renders)
+  const dashboardStatsFetched = useRef(false);
 
   // Pagination state for exams
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Fetch exams and students on mount
+  // Fetch dashboard stats ONCE on mount (memoized to prevent refetch)
+  const fetchDashboardStats = useCallback(async () => {
+    // Skip if already fetched
+    if (dashboardStatsFetched.current) return;
+    
+    try {
+      const statsResponse = await teacherAPI.getDashboardStats();
+      console.log("[Teacher dashboard] Stats response:", statsResponse);
+      
+      setDashboardStats({
+        totalStudents: statsResponse.totalStudents || 0,
+        totalExams: statsResponse.totalExams || 0,
+        totalResults: statsResponse.totalResults || 0,
+      });
+      
+      // Mark as fetched to prevent refetch
+      dashboardStatsFetched.current = true;
+    } catch (err) {
+      console.error('Failed to fetch dashboard stats:', err);
+      // Don't set error here - stats are not critical, exams list is more important
+    }
+  }, []);
+
+  // Fetch exams on mount
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
         setError('');
 
-        // Fetch both exams and students in parallel
-        const [examsResponse, studentsResponse] = await Promise.all([
+        // Fetch dashboard stats (optimized counts) and exams in parallel
+        // Dashboard stats are fetched only once via ref guard
+        const [, examsResponse] = await Promise.all([
+          fetchDashboardStats(),
           teacherAPI.getAcademyExams({ page: 1, limit: 10 }),
-          teacherAPI.getAcademyStudents(),
         ]);
 
-        //console.log("[Teacher dashboard ] exam response", examsResponse );
+        console.log("[Teacher dashboard] Exam response:", examsResponse);
 
         setExams(examsResponse.exams || []);
-        setStudents(studentsResponse.students || []);
 
         // Set pagination metadata for exams
         if (examsResponse.pagination) {
@@ -55,7 +87,7 @@ const TeacherDashboard = () => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [fetchDashboardStats]);
 
   // Load more exams
   const loadMoreExams = async () => {
@@ -97,10 +129,8 @@ const TeacherDashboard = () => {
     }
   };
 
-  // Calculate stats
-  const totalStudents = students.length;
-  const totalExams = exams.length;
-  const totalAttempts = exams.reduce((sum, exam) => sum + (exam.totalAttempts || 0), 0);
+  // Use dashboard stats from optimized API (stable - not recalculated on pagination)
+  const { totalStudents, totalExams, totalResults: totalAttempts } = dashboardStats;
 
   // Format date
   const formatDate = (dateString) => {

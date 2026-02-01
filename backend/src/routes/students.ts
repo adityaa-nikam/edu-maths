@@ -7,6 +7,7 @@ import { signStudentToken } from '../utils/jwt.js';
 import { eq, and, desc } from 'drizzle-orm';
 import { cache } from '../utils/cache.js';
 import { logger } from '../utils/logger.js';
+import { getTeacherAcademyDashboardKey } from '../utils/redisKeys.js';
 
 const router = Router();
 
@@ -71,9 +72,11 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
 
             // Invalidate teacher academy students cache (all pagination combos)
             await cache.delPattern(`teacher:academy:${academyId}:students:*`);
-            logger.info('Cache invalidated for teacher academy students', {
+            // Invalidate dashboard cache (student count changed)
+            await cache.del(getTeacherAcademyDashboardKey(academyId));
+            logger.info('Cache invalidated for teacher academy students and dashboard', {
                 academyId,
-                pattern: `teacher:academy:${academyId}:students:*`,
+                patterns: [`teacher:academy:${academyId}:students:*`, `teacher:academy:${academyId}:dashboard`],
             });
 
             return res.status(201).json({
