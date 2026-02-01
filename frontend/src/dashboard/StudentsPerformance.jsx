@@ -88,11 +88,6 @@ const StudentsPerformance = () => {
                 abortControllerRef.current.signal
             );
 
-            // Check if request was aborted
-            if (abortControllerRef.current?.signal.aborted) {
-                return;
-            }
-
             setStudentsData(prev => [...prev, ...(response.students || [])]);
 
             if (response.pagination) {

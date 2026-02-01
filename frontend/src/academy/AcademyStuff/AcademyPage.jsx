@@ -87,11 +87,6 @@ const AcademyPage = () => {
         abortControllerRef.current.signal
       );
 
-      // Check if request was aborted
-      if (abortControllerRef.current?.signal.aborted) {
-        return;
-      }
-
       setExams(prev => [...prev, ...(examsResponse.exams || [])]);
 
       if (examsResponse.pagination) {

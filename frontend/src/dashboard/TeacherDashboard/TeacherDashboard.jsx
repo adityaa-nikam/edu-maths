@@ -89,12 +89,6 @@ const TeacherDashboard = () => {
         limit: 10 
       }, abortControllerRef.current.signal);
 
-      // Check if request was aborted
-      if (abortControllerRef.current?.signal.aborted) {
-        console.log('📛 Request aborted');
-        return;
-      }
-
       console.log('📦 Response received:', examsResponse.exams?.length, 'exams');
       console.log('📄 First new exam ID:', examsResponse.exams?.[0]?.examId);
       console.log('📄 Last new exam ID:', examsResponse.exams?.[examsResponse.exams?.length - 1]?.examId);

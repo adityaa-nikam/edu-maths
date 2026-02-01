@@ -94,11 +94,6 @@ const StudentsList = () => {
                 abortControllerRef.current.signal
             );
 
-            // Check if request was aborted
-            if (abortControllerRef.current?.signal.aborted) {
-                return;
-            }
-
             setStudents(prev => [...prev, ...(response.students || [])]);
 
             if (response.pagination) {
