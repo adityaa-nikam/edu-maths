@@ -192,9 +192,6 @@ export const examAPI = {
 // ============================================
 
 export const teacherAPI = {
-  // Get dashboard statistics (optimized counts only - no lists)
-  getDashboardStats: () => api.get('/api/teacher/academy/dashboard'),
-
   // Get all exams for teacher's academy
   getAcademyExams: (params = {}) => 
     api.get('/api/teacher/academy/exams', { params }),
