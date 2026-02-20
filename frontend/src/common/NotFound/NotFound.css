@@ -1,0 +1,119 @@
+/* ================================================
+   NOT FOUND PAGE - DARK MODE READY
+   ================================================ */
+
+.notfound-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-primary, #f8f9fa);
+    padding: 2rem;
+}
+
+.notfound-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    max-width: 520px;
+    width: 100%;
+}
+
+.notfound-animation {
+    width: 320px;
+    height: 300px;
+    margin-bottom: 1.5rem;
+}
+
+.notfound-title {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-primary, #1a1a2e);
+    margin: 0 0 0.75rem 0;
+    background: linear-gradient(135deg, var(--primary-purple, #6366f1), var(--accent-pink, #ec4899));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.notfound-subtitle {
+    font-size: 1rem;
+    color: var(--text-secondary, #6b7280);
+    line-height: 1.6;
+    margin: 0 0 2rem 0;
+    max-width: 380px;
+}
+
+.notfound-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.notfound-btn {
+    padding: 0.75rem 1.75rem;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.notfound-btn-primary {
+    background: var(--bg-secondary, #f1f5f9);
+    color: var(--text-primary, #1a1a2e);
+    border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.notfound-btn-primary:hover {
+    background: var(--bg-card, #ffffff);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.notfound-btn-secondary {
+    background: linear-gradient(135deg, var(--primary-purple, #6366f1), var(--accent-pink, #ec4899));
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+}
+
+.notfound-btn-secondary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+}
+
+/* Dark Mode */
+.dark .notfound-btn-primary {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.dark .notfound-btn-primary:hover {
+    background: var(--bg-card);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .notfound-animation {
+        width: 250px;
+        height: 230px;
+    }
+
+    .notfound-title {
+        font-size: 1.6rem;
+    }
+
+    .notfound-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .notfound-btn {
+        width: 100%;
+    }
+}

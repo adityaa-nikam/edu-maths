@@ -1,79 +1,46 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import Lottie from 'lottie-react';
+import notFoundAnimation from '../../assets/animations/404-animation.json';
+import './NotFound.css';
 
 const NotFound = () => {
-  return (
-    <div className="page-container">
-      <div className="container container--sm">
-        <div className="text-center animate-fade-in">
-          {/* 404 Icon */}
-          <div style={{ fontSize: '6rem', marginBottom: 'var(--spacing-lg)' }}>
-            🔍
-          </div>
+    const navigate = useNavigate();
 
-          {/* 404 Number */}
-          <h1 style={{
-            fontSize: '6rem',
-            fontWeight: '900',
-            background: 'linear-gradient(135deg, var(--primary-purple), var(--accent-pink))',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            lineHeight: '1',
-            marginBottom: 'var(--spacing-md)'
-          }}>
-            404
-          </h1>
+    return (
+        <div className="notfound-container">
+            <div className="notfound-content">
+                <div className="notfound-animation">
+                    <Lottie
+                        animationData={notFoundAnimation}
+                        loop={true}
+                        autoplay={true}
+                        style={{ width: '100%', height: '100%' }}
+                    />
+                </div>
 
-          {/* Page Title */}
-          <h2 style={{
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: 'var(--text-primary)',
-            marginBottom: 'var(--spacing-md)'
-          }}>
-            Page Not Found
-          </h2>
+                <h1 className="notfound-title">Page Not Found</h1>
+                <p className="notfound-subtitle">
+                    Oops! The page you're looking for doesn't exist or has been moved.
+                </p>
 
-          {/* Description */}
-          <p style={{
-            fontSize: '1.125rem',
-            color: 'var(--text-secondary)',
-            lineHeight: '1.7',
-            marginBottom: 'var(--spacing-2xl)',
-            maxWidth: '500px',
-            margin: '0 auto var(--spacing-2xl)'
-          }}>
-            Oops! The page you're looking for doesn't exist.
-            It might have been moved or deleted.
-          </p>
-
-          {/* Action Button */}
-          <Link to="/" className="btn btn-primary btn-lg">
-            🏠 Go Back Home
-          </Link>
-
-          {/* Additional Help */}
-          <div style={{
-            marginTop: 'var(--spacing-2xl)',
-            padding: 'var(--spacing-lg)',
-            backgroundColor: 'var(--bg-secondary)',
-            borderRadius: 'var(--radius-md)'
-          }}>
-            <p style={{
-              fontSize: '0.875rem',
-              color: 'var(--text-muted)',
-              margin: '0'
-            }}>
-              Need help? Try starting from the <Link to="/" className="link">homepage</Link> or{' '}
-              <Link to="/login" className="link">sign in</Link> to your account.
-            </p>
-          </div>
+                <div className="notfound-actions">
+                    <button
+                        className="notfound-btn notfound-btn-primary"
+                        onClick={() => navigate(-1)}
+                    >
+                        ← Go Back
+                    </button>
+                    <button
+                        className="notfound-btn notfound-btn-secondary"
+                        onClick={() => navigate('/')}
+                    >
+                        🏠 Go Home
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default NotFound;
-
