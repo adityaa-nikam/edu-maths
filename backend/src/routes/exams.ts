@@ -5,7 +5,7 @@ import { exams, academies, examAttempts, examAnswers, questionsEasy, questionsMe
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { fetchRandomQuestions } from '../services/questions.js';
 import { getRedisClient, isRedisAvailable } from '../db/redis.js';
-import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey, getStudentExamResultKey } from '../utils/redisKeys.js';
+import { getAcademyExamsKey, getExamStartLockKey, getStudentExamStatusKey, getStudentExamQuestionsKey, getStudentExamResultKey, getTeacherAcademyDashboardKey } from '../utils/redisKeys.js';
 import { setExamAttemptActive, markExamAttemptInactive, isExamAttemptActive } from '../utils/examAttemptHelpers.js';
 import { finalizeExamAttempt } from '../utils/examFinalization.js';
 import { cache } from '../utils/cache.js';
@@ -97,12 +97,14 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
                 const publicKey = getAcademyExamsKey(academy[0].slug);
                 await redis.del(publicKey);
                 console.log(`🗑️ Cache invalidated: ${publicKey}`);
-
+                
                 // Invalidate teacher dashboard exams cache (all pagination combos)
                 await cache.delPattern(`teacher:academy:${academyId}:exams:*`);
-                logger.info('Cache invalidated for teacher academy exams', {
+                // Invalidate dashboard stats cache (exam count changed)
+                await cache.del(getTeacherAcademyDashboardKey(academyId));
+                logger.info('Cache invalidated for teacher academy exams and dashboard', {
                     academyId,
-                    pattern: `teacher:academy:${academyId}:exams:*`,
+                    patterns: [`teacher:academy:${academyId}:exams:*`, `teacher:academy:${academyId}:dashboard`],
                 });
             } catch (redisError) {
                 console.error('Redis error (cache invalidation):', redisError);
@@ -128,7 +130,7 @@ router.post('/create', authenticateTeacher, async (req: Request, res: Response) 
 router.get('/academy/:academySlug', async (req: Request, res: Response) => {
     try {
         const { academySlug } = req.params;
-
+        
         // Parse pagination parameters
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
@@ -144,12 +146,12 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
                 if (cached) {
                     console.log(`✅ Cache HIT: ${redisKey}`);
                     const cachedData = JSON.parse(cached);
-
+                    
                     // Apply pagination to cached data
                     const startIdx = offset;
                     const endIdx = offset + limit;
                     const paginatedExams = cachedData.exams.slice(startIdx, endIdx);
-
+                    
                     return res.status(200).json({
                         academy: cachedData.academy,
                         exams: paginatedExams,
@@ -198,23 +200,13 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
             .where(eq(exams.academyId, targetAcademy.id))
             .orderBy(desc(exams.createdAt));
 
-        // 3. Filter out exams that ended more than 24 hours ago (student view only)
-        const now = new Date();
-        const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-        const filteredExams = allExams.filter(exam => {
-            const examEndTime = new Date(exam.endTime);
-            // Keep exam if it hasn't ended yet OR ended less than 24 hours ago
-            return examEndTime >= twentyFourHoursAgo;
-        });
-
         // Prepare data for caching (without pagination)
         const cacheData = {
             academy: {
                 name: targetAcademy.name,
                 slug: targetAcademy.slug,
             },
-            exams: filteredExams,
+            exams: allExams,
         };
 
         // Store in Redis cache (if available) - 1 minute TTL
@@ -228,8 +220,8 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
             }
         }
 
-        // 4. Apply pagination to response
-        const paginatedExams = filteredExams.slice(offset, offset + limit);
+        // 3. Apply pagination to response
+        const paginatedExams = allExams.slice(offset, offset + limit);
 
         return res.status(200).json({
             academy: {
@@ -239,8 +231,8 @@ router.get('/academy/:academySlug', async (req: Request, res: Response) => {
             exams: paginatedExams,
             pagination: {
                 currentPage: page,
-                totalPages: Math.ceil(filteredExams.length / limit),
-                totalItems: filteredExams.length,
+                totalPages: Math.ceil(allExams.length / limit),
+                totalItems: allExams.length,
                 itemsPerPage: limit,
             },
         });
@@ -264,7 +256,7 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
         // CACHE: Check if status is cached
         const cacheKey = getStudentExamStatusKey(examId, studentId);
         const cachedData = await cache.get<any>(cacheKey);
-
+        
         if (cachedData) {
             logger.info('Cache hit for exam status', {
                 requestId: req.requestId,
@@ -310,7 +302,7 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
             .limit(1);
 
         let attemptStatus: 'not_attempted' | 'in_progress' | 'submitted' = 'not_attempted';
-
+        
         if (existingAttempt.length > 0) {
             const attempt = existingAttempt[0];
             if (attempt.submittedAt !== null) {
@@ -355,7 +347,7 @@ router.get('/:examId/status', authenticateStudent, async (req: Request, res: Res
 
         // CACHE: Store the result for 10 seconds
         await cache.set(cacheKey, responseData, 20);
-
+        
         logger.info('Cache miss - exam status fetched from DB and cached', {
             requestId: req.requestId,
             examId,
@@ -382,7 +374,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
     const { examId } = req.params;
     const studentId = req.studentId!;
     const studentAcademyId = req.academyId!;
-
+    
     const lockKey = getExamStartLockKey(examId, studentId);
     const redis = getRedisClient();
     let lockAcquired = false;
@@ -393,7 +385,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
             try {
                 // SET NX (set if not exists) with 10 second expiry
                 const lockResult = await redis.set(lockKey, '1', 'EX', 10, 'NX');
-
+                
                 if (!lockResult) {
                     // Lock already exists - another request is processing
                     console.log(`🔒 Lock conflict: ${lockKey}`);
@@ -402,7 +394,7 @@ router.post('/:examId/start', authenticateStudent, async (req: Request, res: Res
                         message: 'An exam start request is already being processed. Please wait and try again.',
                     });
                 }
-
+                
                 lockAcquired = true;
                 console.log(`🔓 Lock acquired: ${lockKey}`);
             } catch (redisError) {
@@ -551,7 +543,7 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
         // CACHE: Check if questions are cached
         const cacheKey = getStudentExamQuestionsKey(examId, studentId);
         const cachedData = await cache.get<any>(cacheKey);
-
+        
         if (cachedData) {
             logger.info('Cache hit for exam questions', {
                 requestId: req.requestId,
@@ -684,11 +676,11 @@ router.get('/:examId/questions', authenticateStudent, async (req: Request, res: 
 
         // CACHE: Calculate dynamic TTL until exam end time
         const ttlSeconds = Math.floor((endTime.getTime() - now.getTime()) / 1000);
-
+        
         // Only cache if there's time remaining (should always be true here due to earlier check)
         if (ttlSeconds > 0) {
             await cache.set(cacheKey, responseData, ttlSeconds);
-
+            
             logger.info('Cache miss - exam questions fetched from DB and cached', {
                 requestId: req.requestId,
                 examId,
@@ -798,7 +790,7 @@ router.post('/:examId/answer', authenticateStudent, async (req: Request, res: Re
         // 5. Centralized Timing Enforcement: Check if attempt is still active
         // Uses Redis for fast check, falls back to DB if Redis unavailable
         const isActive = await isExamAttemptActive(attemptData.id);
-
+        
         if (!isActive) {
             // AUTO-SUBMIT TRIGGER: If time expired and not yet submitted, finalize the exam
             if (attemptData.submittedAt === null) {
@@ -951,7 +943,7 @@ router.post('/:examId/answers', authenticateStudent, async (req: Request, res: R
         // 5. Centralized Timing Enforcement: Check if attempt is still active
         // Uses Redis for fast check, falls back to DB if Redis unavailable
         const isActive = await isExamAttemptActive(attemptData.id);
-
+        
         if (!isActive) {
             // AUTO-SUBMIT TRIGGER: If time expired and not yet submitted, finalize the exam
             if (attemptData.submittedAt === null) {
@@ -1115,10 +1107,10 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
                 submittedAt: result.submittedAt!,
                 autoSubmitted: result.autoSubmitted!,
             };
-
+            
             // Store in Redis for future duplicate requests
             await storeSubmitIdempotency(examId, studentId, response);
-
+            
             return res.status(200).json(response);
         }
 
@@ -1140,10 +1132,13 @@ router.post('/:examId/submit', authenticateStudent, async (req: Request, res: Re
         await cache.delPattern(`teacher:exam:${examId}:attempts:*`);
         await cache.del(`student:exam:${examId}:student:${studentId}:status`);
         await cache.del(`student:exam:${examId}:student:${studentId}:questions`);
+        // Invalidate dashboard stats cache (totalResults changed)
+        await cache.del(getTeacherAcademyDashboardKey(targetExam.academyId));
         logger.info('Cache invalidated after exam submission', {
             examId,
             studentId,
-            patterns: ['exam summary', 'exam attempts', 'student status', 'student questions'],
+            academyId: targetExam.academyId,
+            patterns: ['exam summary', 'exam attempts', 'student status', 'student questions', 'academy dashboard'],
         });
 
         // 10. Return Results
@@ -1168,7 +1163,7 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
         // CACHE: Check if result is cached
         const cacheKey = getStudentExamResultKey(examId, studentId);
         const cachedData = await cache.get<any>(cacheKey);
-
+        
         if (cachedData) {
             logger.info('Cache hit for exam result', {
                 requestId: req.requestId,
@@ -1246,7 +1241,7 @@ router.get('/:examId/result', authenticateStudent, async (req: Request, res: Res
 
         // CACHE: Store the result for 5 minutes (results are immutable after submission)
         await cache.set(cacheKey, responseData, 300);
-
+        
         logger.info('Cache miss - exam result fetched from DB and cached', {
             requestId: req.requestId,
             examId,

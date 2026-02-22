@@ -239,3 +239,18 @@ export const getStudentExamQuestionsKey = (examId: string, studentId: string): s
 export const getStudentExamResultKey = (examId: string, studentId: string): string => {
   return `student:exam:${examId}:student:${studentId}:result`;
 };
+
+/**
+ * Teacher academy dashboard cache keys
+ * 
+ * Pattern: teacher:academy:{academyId}:dashboard
+ * TTL: 60 seconds (1 minute)
+ * Usage: Cache dashboard statistics (total counts for students, exams, results)
+ * Invalidation: On student/exam create/delete or exam submission
+ * 
+ * @param academyId - Academy UUID
+ * @returns Redis key string
+ */
+export const getTeacherAcademyDashboardKey = (academyId: string): string => {
+  return `teacher:academy:${academyId}:dashboard`;
+};
