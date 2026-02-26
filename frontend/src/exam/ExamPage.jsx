@@ -730,7 +730,7 @@ const ExamPage = () => {
             }}>
                 <div className="container">
                     {/* Breadcrumb */}
-                    <div style={{
+                    {/* <div style={{
                         fontSize: '0.875rem',
                         color: 'var(--text-secondary)',
                         marginBottom: 'var(--spacing-md)'
@@ -743,10 +743,10 @@ const ExamPage = () => {
                         </span>
                         {' / '}
                         <span>{exam?.title || 'Exam'}</span>
-                    </div>
+                    </div> */}
 
                     {/* Exam Title */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+                    {/* <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
                         <div style={{
                             width: '48px',
                             height: '48px',
@@ -763,10 +763,10 @@ const ExamPage = () => {
                         <h1 style={{ fontSize: '1.875rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
                             {exam?.title || 'Exam'}
                         </h1>
-                    </div>
+                    </div> */}
 
                     {/* Exam Info */}
-                    <div style={{
+                    {/* <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
                         gap: 'var(--spacing-md)',
@@ -796,7 +796,7 @@ const ExamPage = () => {
                                 {questions.length}
                             </span>
                         </div>
-                    </div>
+                    </div> */}
                 </div>
             </div>
 

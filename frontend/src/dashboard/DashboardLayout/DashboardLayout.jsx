@@ -59,7 +59,7 @@ const DashboardLayout = ({ children }) => {
             label: 'Students',
         },
         {
-            path: `/${academySlug}/exams`,
+            path: `/${academySlug}/dashboard/create-exam`,
             icon: FileText,
             label: 'Exams',
         },

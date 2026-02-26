@@ -388,8 +388,8 @@ const TeacherDashboard = () => {
             </div>
           </div>
 
-          {/* Create Exam Button */}
-          <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+          {/* Create Exam Button  */}
+          {/* <div style={{ marginBottom: 'var(--spacing-xl)' }}>
             <button
               onClick={() => navigate(`/${academySlug}/dashboard/create-exam`)}
               className="btn btn-primary"
