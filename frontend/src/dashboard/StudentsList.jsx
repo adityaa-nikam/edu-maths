@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { teacherAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorAlert from '../components/ErrorAlert';
+import DashboardLayout from './DashboardLayout/DashboardLayout';
 import { Users, GraduationCap, Trash2, UserRoundPlus, AlertTriangle, Search, Eye } from 'lucide-react';
 
 const StudentsList = () => {
@@ -206,11 +207,16 @@ const StudentsList = () => {
     };
 
     if (loading) {
-        return <LoadingSpinner message="Loading students..." />;
+        return (
+            <DashboardLayout>
+                <LoadingSpinner message="Loading students..." />
+            </DashboardLayout>
+        );
     }
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg-secondary)', paddingBottom: 'var(--spacing-3xl)' }}>
+        <DashboardLayout>
+            <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg-secondary)', paddingBottom: 'var(--spacing-3xl)' }}>
             {/* Header */}
             <div style={{
                 backgroundColor: 'var(--bg-card)',
@@ -225,14 +231,14 @@ const StudentsList = () => {
                         color: 'var(--text-secondary)',
                         marginBottom: 'var(--spacing-md)'
                     }}>
-                        <span
+                        {/* <span
                             onClick={() => navigate(`/${academySlug}/dashboard`)}
                             style={{ color: 'var(--primary-purple)', cursor: 'pointer' }}
                         >
                             Dashboard
                         </span>
                         {' / '}
-                        <span>Students</span>
+                        <span>Students</span> */}
                     </div>
 
                     {/* Title */}
@@ -268,12 +274,12 @@ const StudentsList = () => {
                             >
                                 + Add Student
                             </button>
-                            <button
+                            {/* <button
                                 onClick={() => navigate(`/${academySlug}/dashboard`)}
                                 className="btn btn-outline"
                             >
                                 ← Back to Dashboard
-                            </button>
+                            </button> */}
                         </div>
                     </div>
                 </div>
@@ -854,6 +860,7 @@ const StudentsList = () => {
                 </div>
             )}
         </div>
+        </DashboardLayout>
     );
 };
 

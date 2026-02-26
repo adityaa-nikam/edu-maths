@@ -103,7 +103,8 @@ const StudentLogin = () => {
   if (academyError || !academy) {
     return (
       <div className="page-container">
-        <div className="container container--sm">
+        {/* <div className="container container--sm"> */}
+        <div className="container container--sm" style={{ maxWidth: '360px' }}>
           <div className="card animate-fade-in">
             <div style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
               <div style={{ fontSize: '3rem', marginBottom: 'var(--spacing-md)' }}>❌</div>

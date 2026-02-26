@@ -7,3 +7,4 @@ build/
 .DS_Store
 coverage/
 PROMISE_ISSUE.md
+backend/apminsightdata/edu-maths-backend_3000/apminsight.json
