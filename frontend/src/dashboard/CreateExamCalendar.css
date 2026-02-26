@@ -13,14 +13,14 @@
 .dark,
 [data-theme="dark"],
 [data-bs-theme="dark"] {
-  --calendar-bg-primary: #0a0a0a;
-  --calendar-bg-secondary: #1a1a1a;
-  --calendar-bg-tertiary: #0a0a0a;
-  --calendar-border: #2a2a2a;
+  --calendar-bg-primary: #0f0f11;
+  --calendar-bg-secondary: #1f1f23;
+  --calendar-bg-tertiary: #0f0f11;
+  --calendar-border: #2f2f36;
   --calendar-text-primary: #ffffff;
   --calendar-text-secondary: #b0b0b0;
   --calendar-text-muted: #888888;
-  --calendar-hover-bg: #2a2a2a;
+  --calendar-hover-bg: #222226;
 }
 
 .exam-calendar-container {
@@ -383,12 +383,19 @@
   padding: 16px !important;
   text-align: center;
   cursor: pointer;
+  width: 100%;
+  position: relative;
 }
 
+/* Hide the clock icon - clicking anywhere on input opens time picker */
 .time-input::-webkit-calendar-picker-indicator {
-  filter: invert(1);
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
   cursor: pointer;
-  font-size: 20px;
 }
 
 /* ========== EXAM DETAILS ========== */

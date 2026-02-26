@@ -101,12 +101,12 @@
 [data-bs-theme="dark"] {
     /* ===== BACKGROUND ROLES ===== */
     /* Page background - Deepest level */
-    --bg-primary: #09090b;
-    /* zinc-950 - Main page background */
+    --bg-primary: #0f0f11;
+    /* softened deep dark - Main page background */
     --bg-secondary: #18181b;
     /* zinc-900 - Slightly elevated surface */
-    --bg-card: #27272a;
-    /* zinc-800 - Card/table background */
+    --bg-card: #1f1f23;
+    /* deeper but softer layer - Card/table background */
 
     /* ===== TEXT ROLES ===== */
     /* Main text - Highest contrast for readability */
@@ -123,9 +123,9 @@
     --neutral-100: #3f3f46;
     /* zinc-700 */
     --neutral-200: #52525b;
-    /* zinc-600 */
-    --neutral-300: #71717a;
-    /* zinc-500 */
+    /* zinc-600 - Input borders */
+    --neutral-300: #52525b;
+    /* zinc-600 - Input hover (softer than #71717a) */
     --neutral-400: #a1a1aa;
     /* zinc-400 */
     --neutral-500: #d4d4d8;
@@ -141,8 +141,12 @@
 
     /* ===== BORDER ROLES ===== */
     /* Borders - Visible but subtle */
-    --border-color: #3f3f46;
-    /* zinc-700 - Default borders */
+    --border-color: #2f2f36;
+    /* softer separation - Default borders */
+    
+    /* ===== HOVER STATES ===== */
+    --hover-bg: #222226;
+    /* Interactive hover background */
 
     /* ===== SHADOWS (Darker for depth) ===== */
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
